@@ -10,7 +10,7 @@ keywords = ["tui", "terminal", "cli", "github", "awesome", "omarchy"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-ratatui = "0.27"
+ratatui = "0.28"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "time", "fs", "io-util"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
