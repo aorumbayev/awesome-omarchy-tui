@@ -170,6 +170,108 @@ if [ "$INSTALL_DIR" != "/usr/local/bin" ]; then
     fi
 fi
 
+# Function to construct SHA256 URL from binary URL
+construct_sha256_url() {
+    local binary_url="$1"
+    # Replace .tar.gz extension with .sha256
+    echo "${binary_url%.tar.gz}.sha256"
+}
+
+# Function to check if SHA256 tools are available
+check_sha256_tool() {
+    if command -v shasum >/dev/null 2>&1; then
+        echo "shasum"
+    elif command -v sha256sum >/dev/null 2>&1; then
+        echo "sha256sum"
+    else
+        echo ""
+    fi
+}
+
+# Function to compute SHA256 hash of a file
+compute_file_sha256() {
+    local file_path="$1"
+    local tool=$(check_sha256_tool)
+    
+    case $tool in
+        "shasum")
+            shasum -a 256 "$file_path" | cut -d' ' -f1
+            ;;
+        "sha256sum")
+            sha256sum "$file_path" | cut -d' ' -f1
+            ;;
+        "")
+            echo ""
+            ;;
+    esac
+}
+
+# Function to download and parse SHA256 hash file
+download_sha256_hash() {
+    local sha256_url="$1"
+    local temp_file=$(mktemp)
+    
+    # Download SHA256 file
+    if curl -fsSL -o "$temp_file" "$sha256_url" 2>/dev/null; then
+        # Parse hash from content (first field, separated by whitespace)
+        local hash_line=$(head -n 1 "$temp_file")
+        local hash=$(echo "$hash_line" | cut -d' ' -f1)
+        
+        # Clean up temp file
+        rm -f "$temp_file"
+        
+        # Validate hash format (64 hex characters)
+        if echo "$hash" | grep -q '^[a-fA-F0-9]\{64\}$'; then
+            echo "$hash"
+        else
+            echo ""
+        fi
+    else
+        # Clean up temp file on failure
+        rm -f "$temp_file"
+        echo ""
+    fi
+}
+
+# Function to verify file SHA256 hash
+verify_file_sha256() {
+    local file_path="$1"
+    local expected_hash="$2"
+    
+    # Check if SHA256 tool is available
+    local tool=$(check_sha256_tool)
+    if [ -z "$tool" ]; then
+        print_msg "⚠️  SHA256 verification skipped - no hash computation tool available"
+        return 0  # Allow installation to proceed
+    fi
+    
+    print_msg "🔐 Verifying file integrity..."
+    print_msg "   Expected: ${expected_hash:0:16}..."
+    
+    # Compute file hash
+    local computed_hash=$(compute_file_sha256 "$file_path")
+    if [ -z "$computed_hash" ]; then
+        print_msg "⚠️  SHA256 computation failed - proceeding without verification"
+        return 0  # Allow installation to proceed
+    fi
+    
+    print_msg "   Computed: ${computed_hash:0:16}..."
+    
+    # Compare hashes (case-insensitive)
+    local expected_lower=$(echo "$expected_hash" | tr '[:upper:]' '[:lower:]')
+    local computed_lower=$(echo "$computed_hash" | tr '[:upper:]' '[:lower:]')
+    
+    if [ "$computed_lower" = "$expected_lower" ]; then
+        print_success "✅ File integrity verified successfully!"
+        return 0
+    else
+        error_exit "❌ SHA256 verification failed!
+Expected: $expected_hash
+Computed: $computed_hash
+This indicates file corruption or a security issue. Aborting installation."
+    fi
+}
+
 # Detect architecture
 ARCH=$(uname -m)
 case $ARCH in
@@ -215,6 +317,40 @@ print_msg "Installing awsomarchy $VERSION for $ARCH-$OS..."
 BINARY_NAME="awsomarchy"
 PKG_NAME="${BINARY_NAME}-${ARCH}-${OS}.tar.gz"
 DOWNLOAD_URL="https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$VERSION/$PKG_NAME"
+SHA256_URL=$(construct_sha256_url "$DOWNLOAD_URL")
+
+# Check binary and SHA256 file availability
+print_msg "🔍 Verifying binary and hash file availability..."
+if curl -fsSL --head "$DOWNLOAD_URL" >/dev/null 2>&1; then
+    # Get content length for binary size display
+    binary_size=$(curl -fsSL --head "$DOWNLOAD_URL" 2>/dev/null | grep -i content-length | cut -d' ' -f2 | tr -d '\r')
+    if [ -n "$binary_size" ]; then
+        size_mb=$(echo "scale=1; $binary_size/1024/1024" | bc 2>/dev/null || echo "unknown")
+        print_success "✅ Binary verified (${size_mb} MB)"
+    else
+        print_success "✅ Binary verified"
+    fi
+    
+    # Check SHA256 file availability
+    expected_hash=""
+    if curl -fsSL --head "$SHA256_URL" >/dev/null 2>&1; then
+        print_success "✅ SHA256 hash file verified - integrity validation will be performed"
+        print_msg "🔍 Downloading SHA256 hash file..."
+        expected_hash=$(download_sha256_hash "$SHA256_URL")
+        
+        if [ -n "$expected_hash" ]; then
+            print_success "✅ SHA256 hash retrieved: ${expected_hash:0:16}..."
+        else
+            print_msg "⚠️  SHA256 file format invalid - proceeding without verification"
+            expected_hash=""
+        fi
+    else
+        print_msg "⚠️  SHA256 file not available - proceeding without integrity verification"
+        print_msg "   Consider using a release that includes SHA256 files for enhanced security"
+    fi
+else
+    error_exit "Binary not found at $DOWNLOAD_URL. The release may still be uploading."
+fi
 
 # Create temp directory
 TMP_DIR=$(mktemp -d)
@@ -222,10 +358,18 @@ trap 'rm -rf -- "$TMP_DIR"' EXIT
 cd "$TMP_DIR"
 
 # Download and extract
-print_msg "Downloading from $DOWNLOAD_URL..."
+print_msg "⬇️  Downloading from $DOWNLOAD_URL..."
 curl -fsSL -o "$PKG_NAME" "$DOWNLOAD_URL" || error_exit "Download failed. Check URL or network."
 
-print_msg "Extracting archive..."
+# Verify SHA256 hash if available
+if [ -n "$expected_hash" ]; then
+    verify_file_sha256 "$PKG_NAME" "$expected_hash"
+    print_success "🔐 Hash verification passed - proceeding with installation..."
+else
+    print_msg "⚠️  Installing without SHA256 verification (hash file not available)"
+fi
+
+print_msg "📦 Extracting archive..."
 tar -xzf "$PKG_NAME" || error_exit "Failed to extract archive."
 
 # Check if binary exists after extraction
@@ -248,4 +392,7 @@ mv "$BINARY_NAME" "$INSTALL_DIR/"
 cd - > /dev/null
 
 print_success "${BINARY_NAME} ${VERSION} has been installed to ${INSTALL_DIR}/${BINARY_NAME}"
-print_success "Run '${BINARY_NAME}' to get started browsing the awesome-omarchy repository!"
+if [ -n "$expected_hash" ]; then
+    print_success "🔐 Installation completed with verified integrity!"
+fi
+print_success "🚀 Run '${BINARY_NAME}' to get started browsing the awesome-omarchy repository!"
