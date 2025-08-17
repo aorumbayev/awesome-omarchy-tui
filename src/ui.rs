@@ -66,7 +66,6 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     .alignment(Alignment::Center);
     f.render_widget(title, chunks[0]);
 
-    // Enhanced metadata with professional formatting
     let meta_style = if app.state.is_loading() {
         Style::default()
             .fg(Color::Yellow)

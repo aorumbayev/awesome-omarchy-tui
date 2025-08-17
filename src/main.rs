@@ -82,7 +82,6 @@ async fn main() -> Result<()> {
             println!("awsmomarchy v{}", VERSION);
             println!("A beautiful terminal UI for browsing the awesome-omarchy repository");
             println!("\nFeatures:");
-            println!("• 🎨 Beautiful interface with professional visual design");
             println!("• ⚡ Lightning fast with intelligent caching");
             println!("• 🧭 Intuitive vim-like navigation");
             println!("• 🔍 Powerful real-time search");
