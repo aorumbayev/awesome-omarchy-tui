@@ -14,12 +14,12 @@ Terminal UI for browsing [awesome-omarchy](https://github.com/aorumbayev/awesome
 
 **Unix/Linux/macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aorumbayev/awesome-omarchy-tui/main/install.sh | bash
+curl -fsSL https://tui.awesome-omarchy.com/install.sh | bash
 ```
 
 **Windows:**
 ```powershell
-iwr https://raw.githubusercontent.com/aorumbayev/awesome-omarchy-tui/main/install.ps1 | iex
+iwr https://tui.awesome-omarchy.com/install.ps1 | iex
 ```
 
 **Manual:** Download from [releases](https://github.com/aorumbayev/awesome-omarchy-tui/releases)
