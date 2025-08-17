@@ -1,11 +1,24 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum FocusArea {
+    Sidebar,
+    #[default]
+    Content,
+}
+
 #[derive(Debug, Clone)]
 pub enum AppState {
     Loading,
     Ready,
     Error(String),
+}
+
+impl AppState {
+    pub fn is_loading(&self) -> bool {
+        matches!(self, AppState::Loading)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,7 +105,10 @@ impl SearchIndex {
     }
 
     pub fn add_term(&mut self, term: String, location: SearchLocation) {
-        self.terms.entry(term.to_lowercase()).or_default().push(location);
+        self.terms
+            .entry(term.to_lowercase())
+            .or_default()
+            .push(location);
         self.total_terms += 1;
     }
 
@@ -112,7 +128,8 @@ impl SearchIndex {
                         section_index: location.section_index,
                         entry_index: location.entry_index,
                         line_content: location.line_content.clone(),
-                        relevance_score: calculate_relevance_score(term, &query_lower) * location.search_priority.score_multiplier(),
+                        relevance_score: calculate_relevance_score(term, &query_lower)
+                            * location.search_priority.score_multiplier(),
                         github_url: location.github_url.clone(),
                     });
                 }
@@ -137,7 +154,7 @@ fn calculate_relevance_score(term: &str, query: &str) -> f64 {
     } else if term.starts_with(query) {
         0.8 // Prefix match
     } else if term.ends_with(query) {
-        0.6 // Suffix match  
+        0.6 // Suffix match
     } else {
         0.4 // Contains match
     }
@@ -203,10 +220,10 @@ impl ListState {
     pub fn select(&mut self, index: Option<usize>) {
         self.selected_index = index;
         // Ensure offset is reasonable
-        if let Some(idx) = index {
-            if idx < self.offset {
-                self.offset = idx;
-            }
+        if let Some(idx) = index
+            && idx < self.offset
+        {
+            self.offset = idx;
         }
     }
 
@@ -232,7 +249,7 @@ impl ListState {
             None => 0,
         };
         self.selected_index = Some(i);
-        
+
         // Update offset if needed
         if i < self.offset {
             self.offset = i;
@@ -256,10 +273,11 @@ impl ListState {
             None => 0,
         };
         self.selected_index = Some(i);
-        
+
         // Update offset if needed for viewport management
         // This is a simple implementation - can be enhanced based on viewport size
-        if i >= self.offset + 10 { // Assume 10-item viewport
+        if i >= self.offset + 10 {
+            // Assume 10-item viewport
             self.offset = i.saturating_sub(9);
         } else if i < self.offset {
             self.offset = i;

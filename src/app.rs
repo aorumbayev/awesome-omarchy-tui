@@ -1,6 +1,9 @@
+use crate::{
+    HttpClient,
+    models::{AppState, FocusArea, ListState, ReadmeContent, SearchResult, TabState},
+};
 use anyhow::Result;
-use crossterm::event::{KeyEvent, KeyCode};
-use crate::{HttpClient, models::{AppState, TabState, ReadmeContent, SearchResult, ListState}};
+use crossterm::event::{KeyCode, KeyEvent};
 
 pub struct App {
     pub state: AppState,
@@ -13,6 +16,7 @@ pub struct App {
     pub readme_content: Option<ReadmeContent>,
     pub quit: bool,
     pub client: HttpClient,
+    pub focus_area: FocusArea,
 }
 
 impl App {
@@ -28,6 +32,7 @@ impl App {
             readme_content: None,
             quit: false,
             client,
+            focus_area: FocusArea::default(),
         };
 
         app.load_readme(false).await?;
@@ -36,32 +41,40 @@ impl App {
 
     pub async fn load_readme(&mut self, force_refresh: bool) -> Result<()> {
         self.state = AppState::Loading;
-        
+
         match self.client.fetch_readme(force_refresh).await {
             Ok(content) => {
-                self.tabs = content.sections.iter().enumerate().map(|(i, section)| {
-                    TabState {
-                        title: section.title.clone(),
-                        section_index: i, // Ensure index matches the section position
-                        scroll_offset: 0,
-                        selected: i == 0,
-                        list_state: if section.entries.is_empty() {
-                            ListState { selected_index: None, offset: 0 }
-                        } else {
-                            ListState::new()
-                        },
-                    }
-                }).collect();
-                
+                self.tabs = content
+                    .sections
+                    .iter()
+                    .enumerate()
+                    .map(|(i, section)| {
+                        TabState {
+                            title: section.title.clone(),
+                            section_index: i, // Ensure index matches the section position
+                            scroll_offset: 0,
+                            selected: i == 0,
+                            list_state: if section.entries.is_empty() {
+                                ListState {
+                                    selected_index: None,
+                                    offset: 0,
+                                }
+                            } else {
+                                ListState::new()
+                            },
+                        }
+                    })
+                    .collect();
+
                 // Validate current_tab is within bounds
                 if self.current_tab >= self.tabs.len() {
                     self.current_tab = 0;
                 }
-                
+
                 if !self.tabs.is_empty() {
                     self.tabs[self.current_tab].selected = true;
                 }
-                
+
                 self.readme_content = Some(content);
                 self.state = AppState::Ready;
             }
@@ -83,8 +96,8 @@ impl App {
     }
 
     async fn handle_search_input(&mut self, key: KeyEvent) -> Result<()> {
-        use crossterm::event::{KeyModifiers};
-        
+        use crossterm::event::KeyModifiers;
+
         match key.code {
             KeyCode::Esc => {
                 self.search_mode = false;
@@ -94,12 +107,11 @@ impl App {
             }
             KeyCode::Enter => {
                 // If we have a selected search result, open its GitHub URL
-                if let Some(selected_idx) = self.search_selection {
-                    if let Some(result) = self.search_results.get(selected_idx) {
-                        if let Some(url) = &result.github_url {
-                            self.open_url(url);
-                        }
-                    }
+                if let Some(selected_idx) = self.search_selection
+                    && let Some(result) = self.search_results.get(selected_idx)
+                    && let Some(url) = &result.github_url
+                {
+                    self.open_url(url);
                 }
                 self.search_mode = false;
                 self.search_selection = None;
@@ -146,23 +158,40 @@ impl App {
     }
 
     async fn handle_normal_input(&mut self, key: KeyEvent) -> Result<()> {
-        use crossterm::event::{KeyModifiers};
-        
+        use crossterm::event::KeyModifiers;
+
         match key.code {
-            // Tab navigation - Vim h/l for horizontal movement
-            KeyCode::Tab | KeyCode::Char('l') => {
+            // h/l keys - Switch between sidebar and content area focus
+            KeyCode::Char('h') => {
+                self.focus_area = FocusArea::Sidebar;
+            }
+            KeyCode::Char('l') => {
+                self.focus_area = FocusArea::Content;
+            }
+            // Tab navigation - Next section (works from both areas)
+            KeyCode::Tab => {
                 self.next_tab();
             }
-            KeyCode::BackTab | KeyCode::Char('h') => {
+            KeyCode::BackTab => {
                 self.previous_tab();
             }
-            // Vim j/k for vertical movement within lists
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.list_next();
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.list_previous();
-            }
+            // j/k keys - Navigate within current focus area
+            KeyCode::Char('j') | KeyCode::Down => match self.focus_area {
+                FocusArea::Sidebar => {
+                    self.next_tab();
+                }
+                FocusArea::Content => {
+                    self.list_next();
+                }
+            },
+            KeyCode::Char('k') | KeyCode::Up => match self.focus_area {
+                FocusArea::Sidebar => {
+                    self.previous_tab();
+                }
+                FocusArea::Content => {
+                    self.list_previous();
+                }
+            },
             // Reload
             KeyCode::Char('r') | KeyCode::Char('R') => {
                 self.load_readme(true).await?;
@@ -245,71 +274,64 @@ impl App {
     }
 
     pub fn page_down(&mut self) {
-        // Keep for potential future use with large lists  
+        // Keep for potential future use with large lists
         for _ in 0..5 {
             self.list_next();
         }
     }
 
     pub fn list_next(&mut self) {
-        if self.current_tab < self.tabs.len() {
-            if let Some(tab) = self.tabs.get_mut(self.current_tab) {
-                if let Some(ref readme) = self.readme_content {
-                    if let Some(section) = readme.sections.get(tab.section_index) {
-                        if !section.entries.is_empty() {
-                            tab.list_state.select_next(section.entries.len());
-                        }
-                    }
-                }
-            }
+        if self.current_tab < self.tabs.len()
+            && let Some(tab) = self.tabs.get_mut(self.current_tab)
+            && let Some(ref readme) = self.readme_content
+            && let Some(section) = readme.sections.get(tab.section_index)
+            && !section.entries.is_empty()
+        {
+            tab.list_state.select_next(section.entries.len());
         }
     }
 
     pub fn list_previous(&mut self) {
-        if self.current_tab < self.tabs.len() {
-            if let Some(tab) = self.tabs.get_mut(self.current_tab) {
-                if let Some(ref readme) = self.readme_content {
-                    if let Some(section) = readme.sections.get(tab.section_index) {
-                        if !section.entries.is_empty() {
-                            tab.list_state.select_previous(section.entries.len());
-                        }
-                    }
-                }
-            }
+        if self.current_tab < self.tabs.len()
+            && let Some(tab) = self.tabs.get_mut(self.current_tab)
+            && let Some(ref readme) = self.readme_content
+            && let Some(section) = readme.sections.get(tab.section_index)
+            && !section.entries.is_empty()
+        {
+            tab.list_state.select_previous(section.entries.len());
         }
     }
 
     pub fn list_first(&mut self) {
-        if self.current_tab < self.tabs.len() {
-            if let Some(tab) = self.tabs.get_mut(self.current_tab) {
-                tab.list_state.select_first();
-                tab.scroll_offset = 0;
-            }
+        if self.current_tab < self.tabs.len()
+            && let Some(tab) = self.tabs.get_mut(self.current_tab)
+        {
+            tab.list_state.select_first();
+            tab.scroll_offset = 0;
         }
     }
 
     pub fn list_last(&mut self) {
-        if self.current_tab < self.tabs.len() {
-            if let Some(tab) = self.tabs.get_mut(self.current_tab) {
-                if let Some(ref readme) = self.readme_content {
-                    if let Some(section) = readme.sections.get(tab.section_index) {
-                        if !section.entries.is_empty() {
-                            tab.list_state.select(Some(section.entries.len() - 1));
-                        }
-                    }
-                }
-            }
+        if self.current_tab < self.tabs.len()
+            && let Some(tab) = self.tabs.get_mut(self.current_tab)
+            && let Some(ref readme) = self.readme_content
+            && let Some(section) = readme.sections.get(tab.section_index)
+            && !section.entries.is_empty()
+        {
+            tab.list_state.select(Some(section.entries.len() - 1));
         }
     }
-
-
 
     pub fn perform_search(&mut self) {
         if let Some(ref readme) = self.readme_content {
             if !self.search_query.trim().is_empty() {
                 self.search_results = readme.search_index.search(&self.search_query);
                 // Reset selection when performing new search
-                self.search_selection = if self.search_results.is_empty() { None } else { Some(0) };
+                self.search_selection = if self.search_results.is_empty() {
+                    None
+                } else {
+                    Some(0)
+                };
             } else {
                 self.search_results.clear();
                 self.search_selection = None;
@@ -329,9 +351,7 @@ impl App {
             .spawn()
             .or_else(|_| {
                 // Fallback for macOS
-                std::process::Command::new("open")
-                    .arg(url)
-                    .spawn()
+                std::process::Command::new("open").arg(url).spawn()
             })
             .or_else(|_| {
                 // Fallback for Windows
@@ -357,8 +377,6 @@ impl App {
         self.tabs.get(self.current_tab)
     }
 
-
-
     pub fn get_current_list_state(&mut self) -> Option<&mut crate::models::ListState> {
         // Ensure we get the list state for the current tab
         if self.current_tab < self.tabs.len() {
@@ -368,14 +386,13 @@ impl App {
         }
     }
 
-
-
     pub fn get_metadata_summary(&self) -> Option<String> {
-        self.readme_content.as_ref().map(|readme| format!(
-                "{} | {} sections | {} total entries",
-                readme.metadata.title,
+        self.readme_content.as_ref().map(|readme| {
+            format!(
+                "{} sections | {} total entries",
                 readme.sections.len(),
                 readme.metadata.total_entries
-            ))
+            )
+        })
     }
 }

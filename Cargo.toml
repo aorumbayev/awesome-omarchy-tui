@@ -1,12 +1,12 @@
 [package]
 name = "awesome-omarchy-tui"
 version = "0.1.0"
-edition = "2021"
-description = "A terminal UI application for browsing the awesome-omarchy repository"
-authors = ["Your Name <your.email@example.com>"]
+edition = "2024"
+description = "A beautiful terminal UI for browsing the awesome-omarchy repository with search, navigation, and GitHub integration"
+authors = ["Altynbek Orumbayev <aorumbayev@pm.me>"]
 license = "MIT"
-repository = "https://github.com/username/awesome-omarchy-tui"
-keywords = ["tui", "terminal", "cli", "github", "awesome"]
+repository = "https://github.com/aorumbayev/awesome-omarchy-tui"
+keywords = ["tui", "terminal", "cli", "github", "awesome", "omarchy"]
 categories = ["command-line-utilities"]
 
 [dependencies]
@@ -19,8 +19,25 @@ anyhow = "1.0"
 serde_json = "1.0"
 dirs = "5.0"
 pulldown-cmark = "0.11"
-regex = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+self_update = { version = "0.42.0", features = [
+    "archive-tar",
+    "archive-zip", 
+    "compression-flate2",
+    "rustls",
+], optional = true }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[features]
+default = ["updater"]
+updater = ["dep:self_update"]
 
 [[bin]]
-name = "awesome-omarchy-tui"
+name = "awsmomarchy"
 path = "src/main.rs"

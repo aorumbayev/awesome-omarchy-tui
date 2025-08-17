@@ -30,7 +30,8 @@ impl EventHandler {
                 }
                 tokio::task::yield_now().await;
             }
-        }).await;
+        })
+        .await;
 
         match event {
             Ok(event_result) => event_result,

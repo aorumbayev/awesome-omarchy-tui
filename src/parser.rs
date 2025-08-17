@@ -1,6 +1,9 @@
-use crate::models::{ReadmeContent, ReadmeMetadata, Section, RepositoryEntry, SearchIndex, SearchLocation, SearchPriority};
+use crate::models::{
+    ReadmeContent, ReadmeMetadata, RepositoryEntry, SearchIndex, SearchLocation, SearchPriority,
+    Section,
+};
 use anyhow::{Result, anyhow};
-use pulldown_cmark::{Parser, Event, Tag, TagEnd};
+use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
 /// Parser for awesome-omarchy README markdown content
 pub struct ReadmeParser {
@@ -15,7 +18,7 @@ impl ReadmeParser {
         Self {
             known_sections: vec![
                 "Official Resources",
-                "Alternative Implementations", 
+                "Alternative Implementations",
                 "Themes",
                 "Development Tools",
                 "Related Projects",
@@ -61,7 +64,7 @@ impl ReadmeParser {
         let mut current_header_level = 0;
         let mut header_text = String::new();
         let mut link_url = String::new();
-        let mut is_in_list_item = false; 
+        let mut is_in_list_item = false;
         let mut current_item_text = String::new(); // Text for current list item only
         let mut metadata = ReadmeMetadata::default();
 
@@ -78,25 +81,25 @@ impl ReadmeParser {
                 Event::End(TagEnd::Heading(_)) => {
                     if is_in_header {
                         let header = header_text.trim().to_string();
-                        
+
                         // Extract title from first H1
                         if !title_extracted && current_header_level == 1 {
                             metadata.title = header.clone();
                             title_extracted = true;
                         }
-                        
+
                         // Check if this is a section header we should parse
                         if current_header_level >= 2 && self.should_parse_section(&header) {
                             // Save previous section if exists
                             if let Some(section) = current_section.take() {
                                 readme_content.sections.push(section);
                             }
-                            
+
                             // Start new section
                             current_section = Some(Section::new(header));
                             current_text.clear();
                         }
-                        
+
                         is_in_header = false;
                     }
                 }
@@ -150,18 +153,20 @@ impl ReadmeParser {
                         if let Some(ref mut section) = current_section {
                             section.raw_content.push('\n');
                         }
-                        
+
                         // Process the accumulated text for the current item if we have a GitHub link
-                        if is_in_list_item && !link_url.is_empty() && !current_item_text.trim().is_empty() {
-                            if let Some(ref mut section) = current_section {
-                                if self.is_github_link(&link_url) {
-                                    let entry = self.extract_repository_entry(&current_item_text, &link_url);
-                                    section.entries.push(entry);
-                                    section.entry_count += 1;
-                                }
-                            }
+                        if is_in_list_item
+                            && !link_url.is_empty()
+                            && !current_item_text.trim().is_empty()
+                            && let Some(ref mut section) = current_section
+                            && self.is_github_link(&link_url)
+                        {
+                            let entry =
+                                self.extract_repository_entry(&current_item_text, &link_url);
+                            section.entries.push(entry);
+                            section.entry_count += 1;
                         }
-                        
+
                         is_in_list_item = false;
                         current_item_text.clear();
                         link_url.clear();
@@ -219,9 +224,21 @@ impl ReadmeParser {
 
         // Include sections that look like categories (contain certain keywords)
         let category_indicators = vec![
-            "tools", "libraries", "resources", "projects", "extensions",
-            "plugins", "integrations", "frameworks", "platforms", "services",
-            "utilities", "apps", "applications", "implementations", "solutions"
+            "tools",
+            "libraries",
+            "resources",
+            "projects",
+            "extensions",
+            "plugins",
+            "integrations",
+            "frameworks",
+            "platforms",
+            "services",
+            "utilities",
+            "apps",
+            "applications",
+            "implementations",
+            "solutions",
         ];
 
         for indicator in category_indicators {
@@ -259,7 +276,7 @@ impl ReadmeParser {
     /// Split text into title and description
     fn split_title_description(&self, text: &str) -> (String, String) {
         let text = text.trim();
-        
+
         // Handle markdown list item format: "link_text - description"
         // The link_text is the repository name, description follows after " - "
         if let Some(pos) = text.find(" - ") {
@@ -267,7 +284,7 @@ impl ReadmeParser {
             let description = text[pos + 3..].trim().to_string();
             return (title, description);
         }
-        
+
         // Handle colon separator format: "title: description"
         if let Some(pos) = text.find(": ") {
             let title = text[..pos].trim().to_string();
@@ -284,13 +301,13 @@ impl ReadmeParser {
         let mut tags = Vec::new();
         let description_lower = description.to_lowercase();
 
-        // Common tag patterns in awesome lists
+        // Common tag patterns in awesome lists (removed generic "go" to prevent spurious matches)
         let tag_indicators = vec![
             ("rust", "rust"),
             ("python", "python"),
             ("javascript", "javascript"),
             ("typescript", "typescript"),
-            ("go", "go"),
+            ("golang", "go"), // More specific pattern for Go language
             ("java", "java"),
             ("c++", "cpp"),
             ("cli", "command-line"),
@@ -323,13 +340,27 @@ impl ReadmeParser {
             // Index entries with priorities
             for (entry_idx, entry) in section.entries.iter().enumerate() {
                 // Priority 1: Repository names
-                self.index_text(&entry.title, section_idx, Some(entry_idx), SearchPriority::RepositoryName, Some(&entry.url), &mut search_index);
-                
+                self.index_text(
+                    &entry.title,
+                    section_idx,
+                    Some(entry_idx),
+                    SearchPriority::RepositoryName,
+                    Some(&entry.url),
+                    &mut search_index,
+                );
+
                 // Priority 2: Repository descriptions
                 if !entry.description.is_empty() {
-                    self.index_text(&entry.description, section_idx, Some(entry_idx), SearchPriority::Description, Some(&entry.url), &mut search_index);
+                    self.index_text(
+                        &entry.description,
+                        section_idx,
+                        Some(entry_idx),
+                        SearchPriority::Description,
+                        Some(&entry.url),
+                        &mut search_index,
+                    );
                 }
-                
+
                 // Don't index tags or raw content for prioritized search
             }
 
@@ -341,7 +372,15 @@ impl ReadmeParser {
     }
 
     /// Add text to search index with location information
-    fn index_text(&self, text: &str, section_idx: usize, entry_idx: Option<usize>, priority: SearchPriority, github_url: Option<&str>, search_index: &mut SearchIndex) {
+    fn index_text(
+        &self,
+        text: &str,
+        section_idx: usize,
+        entry_idx: Option<usize>,
+        priority: SearchPriority,
+        github_url: Option<&str>,
+        search_index: &mut SearchIndex,
+    ) {
         let words = text
             .split_whitespace()
             .filter(|word| word.len() > 2) // Skip very short words
@@ -418,10 +457,13 @@ mod tests {
         let parser = ReadmeParser::new();
         let text = "Awesome Tool - A comprehensive tool for doing awesome things";
         let url = "https://github.com/user/awesome-tool";
-        
+
         let entry = parser.extract_repository_entry(text, url);
         assert_eq!(entry.title, "Awesome Tool");
-        assert_eq!(entry.description, "A comprehensive tool for doing awesome things");
+        assert_eq!(
+            entry.description,
+            "A comprehensive tool for doing awesome things"
+        );
         assert_eq!(entry.url, url);
     }
 
@@ -444,7 +486,7 @@ mod tests {
         let result = parser.parse(markdown).unwrap();
         let search_results = result.search_index.search("rust");
         assert!(!search_results.is_empty());
-        
+
         let search_results = result.search_index.search("web");
         assert!(!search_results.is_empty());
     }

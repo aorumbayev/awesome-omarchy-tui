@@ -1,0 +1,84 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+
+env:
+    CARGO_TERM_COLOR: always
+
+# ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
+# and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
+concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+    cancel-in-progress: true
+
+jobs:
+    fmt:
+        name: fmt
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt
+            - name: check formatting
+              run: cargo fmt -- --check
+            - name: Cache Cargo dependencies
+              uses: Swatinem/rust-cache@v2
+
+    clippy:
+        name: clippy
+        runs-on: ubuntu-latest
+        permissions:
+            checks: write
+            contents: read
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy
+            - name: Run clippy action
+              uses: clechasseur/rs-clippy-check@v4
+            - name: Cache Cargo dependencies
+              uses: Swatinem/rust-cache@v2
+
+    test:
+        name: test
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+            - name: Run tests
+              run: cargo test --all-features
+            - name: Cache Cargo dependencies
+              uses: Swatinem/rust-cache@v2
+
+    build:
+        name: build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+            - name: Build
+              run: cargo build --release
+            - name: Cache Cargo dependencies
+              uses: Swatinem/rust-cache@v2

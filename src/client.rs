@@ -1,9 +1,9 @@
+use crate::models::ReadmeContent;
+use crate::parser::ReadmeParser;
 use anyhow::Result;
 use reqwest::Client;
 use std::path::PathBuf;
 use tokio::fs;
-use crate::models::ReadmeContent;
-use crate::parser::ReadmeParser;
 
 pub struct HttpClient {
     client: Client,
@@ -25,12 +25,10 @@ impl HttpClient {
     /// Fetch README content with caching and comprehensive parsing
     pub async fn fetch_readme(&self, force_refresh: bool) -> Result<ReadmeContent> {
         let url = "https://raw.githubusercontent.com/aorumbayev/awesome-omarchy/refs/heads/main/README.md";
-        
+
         // Try to load from cache first (unless force refresh)
-        if !force_refresh {
-            if let Ok(cached) = self.load_from_cache().await {
-                return Ok(cached);
-            }
+        if !force_refresh && let Ok(cached) = self.load_from_cache().await {
+            return Ok(cached);
         }
 
         // Fetch from GitHub
@@ -41,7 +39,8 @@ impl HttpClient {
         let parser = ReadmeParser::new();
         let readme_content = parser.parse(&markdown_content).unwrap_or_else(|_| {
             // Fallback to simple parsing if comprehensive parser fails
-            self.simple_parse(&markdown_content).unwrap_or_else(|_| ReadmeContent::default())
+            self.simple_parse(&markdown_content)
+                .unwrap_or_else(|_| ReadmeContent::default())
         });
 
         // Cache the result
@@ -53,8 +52,8 @@ impl HttpClient {
     /// Simple markdown parser until module resolution is fixed
     fn simple_parse(&self, markdown_content: &str) -> Result<ReadmeContent> {
         use crate::models::{ReadmeMetadata, Section};
-        use pulldown_cmark::{Parser, Event, Tag, TagEnd};
         use anyhow::anyhow;
+        use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
         if markdown_content.trim().is_empty() {
             return Err(anyhow!("Empty markdown content"));
@@ -80,25 +79,25 @@ impl HttpClient {
                 Event::End(TagEnd::Heading(_)) => {
                     if is_in_header {
                         let header = header_text.trim().to_string();
-                        
+
                         // Extract title from first H1
                         if !title_extracted && current_header_level == 1 {
                             metadata.title = header.clone();
                             title_extracted = true;
                         }
-                        
+
                         // Check if this is a section header we should parse
                         if current_header_level >= 2 {
                             // Save previous section if exists
                             if let Some(section) = current_section.take() {
                                 readme_content.sections.push(section);
                             }
-                            
+
                             // Start new section
                             current_section = Some(Section::new(header));
                             current_text.clear();
                         }
-                        
+
                         is_in_header = false;
                     }
                 }
