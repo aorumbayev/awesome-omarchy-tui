@@ -136,7 +136,14 @@ function Get-ExpectedHash {
     
     try {
         Write-Info "🔍 Downloading SHA256 hash file..."
-        $sha256Content = Invoke-WebRequest -Uri $Sha256Url -UseBasicParsing | Select-Object -ExpandProperty Content
+        $sha256Response = Invoke-WebRequest -Uri $Sha256Url -UseBasicParsing
+        
+        # Ensure content is treated as string (handle both string and byte responses)
+        $sha256Content = if ($sha256Response.Content -is [byte[]]) {
+            [System.Text.Encoding]::UTF8.GetString($sha256Response.Content)
+        } else {
+            $sha256Response.Content
+        }
         
         # Parse hash from content (format: "hash *filename" or "hash  filename")
         $hashLine = $sha256Content.Trim()
