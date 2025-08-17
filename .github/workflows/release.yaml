@@ -1,524 +1,252 @@
 name: Release
 
 on:
-    push:
-        tags:
-            - "v[0-9]+.*"
+  push:
+    tags: ["v[0-9]+.*"]
 
 permissions:
-    contents: write # Needed for creating releases and uploading assets
+  contents: write
 
 env:
-    CARGO_TERM_COLOR: always
-    RUST_BACKTRACE: 1
-    # Default binary name
-    BINARY_NAME: awsomarchy
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  BINARY_NAME: awsomarchy
 
 jobs:
-    create-release:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v5
-            - uses: taiki-e/create-gh-release-action@v1
-              with:
-                  # If you have a changelog file, specify it here
-                  # changelog: CHANGELOG.md
-                  token: ${{ secrets.GITHUB_TOKEN }}
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-    publish-crate:
-        needs: create-release
-        runs-on: ubuntu-latest
-        environment: production
-        steps:
-            - uses: actions/checkout@v5
-            - uses: dtolnay/rust-toolchain@stable
-            - uses: Swatinem/rust-cache@v2
-            - name: Publish to crates.io
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_API_TOKEN }}
-              run: |
-                  cargo publish --dry-run --no-default-features
-                  cargo publish --no-default-features
+  publish-crate:
+    needs: create-release
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_API_TOKEN }}
+        run: |
+          cargo publish --dry-run --no-default-features
+          cargo publish --no-default-features
 
-    upload-assets:
-        needs: [create-release, publish-crate]
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - target: x86_64-unknown-linux-gnu
-                      os: ubuntu-latest
-                    - target: x86_64-unknown-linux-musl
-                      os: ubuntu-latest
-                    - target: x86_64-apple-darwin
-                      os: macos-latest
-                    - target: x86_64-pc-windows-msvc
-                      os: windows-latest
-                    - target: aarch64-unknown-linux-gnu
-                      os: ubuntu-latest
-                    - target: aarch64-unknown-linux-musl
-                      os: ubuntu-latest
-                    - target: aarch64-apple-darwin
-                      os: macos-latest
-        runs-on: ${{ matrix.os }}
-        steps:
-            - uses: actions/checkout@v5
+  build-standard:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-            - name: Install Rust toolchain
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  targets: ${{ matrix.target }}
+      - name: Install cross-compilation dependencies
+        if: matrix.target == 'x86_64-unknown-linux-musl' || contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
 
-            - name: Install cross-compilation dependencies
-              if: matrix.target == 'x86_64-unknown-linux-musl' || contains(matrix.target, 'musl')
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y musl-tools musl-dev
+      - name: Install cross-compilation dependencies for aarch64
+        if: contains(matrix.target, 'aarch64') && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
-            - name: Install cross-compilation dependencies for aarch64
-              if: contains(matrix.target, 'aarch64') && matrix.os == 'ubuntu-latest'
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Set cross-compilation environment
+        if: contains(matrix.target, 'aarch64-unknown-linux-gnu')
+        run: |
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
-            - name: Set cross-compilation environment
-              if: contains(matrix.target, 'aarch64-unknown-linux-gnu')
-              run: |
-                  echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-                  echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: ${{ env.BINARY_NAME }}
+          target: ${{ matrix.target }}
+          include: LICENSE,README.md
+          checksum: sha256
+          archive: $bin-standard-$target
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-            - uses: taiki-e/upload-rust-binary-action@v1
-              with:
-                  bin: ${{ env.BINARY_NAME }}
-                  target: ${{ matrix.target }}
-                  include: LICENSE,README.md
-                  checksum: sha256
-                  token: ${{ secrets.GITHUB_TOKEN }}
+  build-aur:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-    # Direct binary download and installation testing (existing method)
-    test-binary-installation:
-        needs: upload-assets
-        continue-on-error: true
-        strategy:
-            matrix:
-                include:
-                    - os: ubuntu-latest
-                      target: x86_64-unknown-linux-gnu
-                    - os: macos-latest
-                      target: x86_64-apple-darwin
-                    - os: windows-latest
-                      target: x86_64-pc-windows-msvc
-        runs-on: ${{ matrix.os }}
-        steps:
-            - name: Test direct binary installation on Linux/macOS
-              if: matrix.os != 'windows-latest'
-              shell: bash
-              run: |
-                  # Get the latest version tag
-                  VERSION=$GITHUB_REF_NAME
-                  # Use curl to download and test the binary
-                  curl -L https://github.com/${{ github.repository }}/releases/download/${VERSION}/${{ env.BINARY_NAME }}-${{ matrix.target }}.tar.gz -o ${{ env.BINARY_NAME }}.tar.gz
-                  tar xzf ${{ env.BINARY_NAME }}.tar.gz
-                  ./${{ env.BINARY_NAME }} help
+      - name: Install cross-compilation dependencies
+        if: matrix.target == 'x86_64-unknown-linux-musl' || contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
 
-            - name: Test direct binary installation on Windows
-              if: matrix.os == 'windows-latest'
-              shell: pwsh
-              run: |
-                  # Get the latest version tag
-                  $VERSION = $env:GITHUB_REF_NAME
-                  # Use PowerShell to download and test the binary
-                  Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/${VERSION}/${{ env.BINARY_NAME }}-${{ matrix.target }}.zip" -OutFile "${{ env.BINARY_NAME }}.zip"
-                  Expand-Archive -Path "${{ env.BINARY_NAME }}.zip" -DestinationPath "."
-                  .\${{ env.BINARY_NAME }}.exe help
+      - name: Install cross-compilation dependencies for aarch64
+        if: contains(matrix.target, 'aarch64')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
-    # Test installation via curl piped command (as documented in README)
-    test-curl-piped-installation:
-        needs: upload-assets
-        continue-on-error: true
-        strategy:
-            matrix:
-                os: [ubuntu-latest, macos-latest]
-        runs-on: ${{ matrix.os }}
-        steps:
-            - name: Wait for release assets to be available
-              run: sleep 30
+      - name: Set cross-compilation environment
+        if: contains(matrix.target, 'aarch64-unknown-linux-gnu')
+        run: |
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
-            - name: Test curl piped installation (README method)
-              shell: bash
-              run: |
-                  # Test the exact command from README: curl -fsSL https://tui.awesome-omarchy.com/install.sh | bash
-                  # Since we can't use the CDN during CI, we'll test the direct GitHub method
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --version ${{ github.ref_name }}
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: ${{ env.BINARY_NAME }}
+          target: ${{ matrix.target }}
+          include: LICENSE,README.md
+          checksum: sha256
+          archive: $bin-aur-$target
+          no-default-features: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Verify installation and functionality
-              shell: bash
-              run: |
-                  # Verify the binary was installed and is functional
-                  which awsomarchy || echo "Binary not found in PATH, checking common locations..."
-                  
-                  # Check common installation locations
-                  if [ -f "/usr/local/bin/awsomarchy" ]; then
-                      /usr/local/bin/awsomarchy help
-                  elif [ -f "$HOME/.local/bin/awsomarchy" ]; then
-                      $HOME/.local/bin/awsomarchy help
-                  elif [ -f "$HOME/bin/awsomarchy" ]; then
-                      $HOME/bin/awsomarchy help
-                  elif command -v awsomarchy >/dev/null 2>&1; then
-                      awsomarchy help
-                  else
-                      echo "Binary not found after installation!"
-                      exit 1
-                  fi
+  test-installation:
+    needs: [build-standard, build-aur]
+    continue-on-error: true
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Test script installation
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          sleep 30
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --version ${{ github.ref_name }}
+          
+          if command -v awsomarchy >/dev/null 2>&1; then
+            awsomarchy help
+            awsomarchy version
+          elif [ -f "/usr/local/bin/awsomarchy" ]; then
+            /usr/local/bin/awsomarchy help
+          elif [ -f "$HOME/.local/bin/awsomarchy" ]; then
+            $HOME/.local/bin/awsomarchy help
+          else
+            echo "Installation failed"
+            exit 1
+          fi
 
-    # Test installation via PowerShell piped command (as documented in README)  
-    test-powershell-piped-installation:
-        needs: upload-assets
-        continue-on-error: true
-        runs-on: windows-latest
-        steps:
-            - name: Wait for release assets to be available
-              run: Start-Sleep -Seconds 30
+      - name: Test script installation (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 30
+          $script = iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1"
+          $scriptBlock = [ScriptBlock]::Create($script.Content)
+          & $scriptBlock -Version "${{ github.ref_name }}"
+          
+          $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"
+          if (Test-Path $binaryPath) {
+            & $binaryPath help
+            & $binaryPath version
+          } elseif (Get-Command awsomarchy -ErrorAction SilentlyContinue) {
+            awsomarchy help
+            awsomarchy version
+          } else {
+            throw "Installation failed"
+          }
 
-            - name: Test PowerShell piped installation (README method)
-              shell: pwsh
-              run: |
-                  # Test the exact command from README: iwr https://tui.awesome-omarchy.com/install.ps1 | iex
-                  # Since we can't use the CDN during CI, we'll test the direct GitHub method
-                  $script = iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1"
-                  $scriptBlock = [ScriptBlock]::Create($script.Content)
-                  & $scriptBlock -Version "${{ github.ref_name }}"
+  publish-aur:
+    needs: [build-aur, create-release]
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-            - name: Verify installation and functionality
-              shell: pwsh
-              run: |
-                  # Verify the binary was installed and is functional
-                  $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"
-                  if (Test-Path $binaryPath) {
-                      & $binaryPath help
-                      Write-Host "✅ PowerShell piped installation successful!"
-                  }
-                  elseif (Get-Command awsomarchy -ErrorAction SilentlyContinue) {
-                      awsomarchy help
-                      Write-Host "✅ PowerShell piped installation successful (found in PATH)!"
-                  }
-                  else {
-                      Write-Error "❌ Binary not found after PowerShell piped installation!"
-                      exit 1
-                  }
+      - name: Setup environment variables
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+          echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
-    # Test installation via direct script download and execution
-    test-script-installation:
-        needs: upload-assets
-        continue-on-error: true
-        strategy:
-            matrix:
-                include:
-                    - os: ubuntu-latest
-                      script: install.sh
-                      shell: bash
-                    - os: macos-latest  
-                      script: install.sh
-                      shell: bash
-                    - os: windows-latest
-                      script: install.ps1
-                      shell: pwsh
-        runs-on: ${{ matrix.os }}
-        steps:
-            - name: Wait for release assets to be available
-              shell: bash
-              run: sleep 30
+      - name: Wait for AUR binaries
+        run: |
+          sleep 60
+          BINARY_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/${{ env.BINARY_NAME }}-aur-x86_64-unknown-linux-gnu.tar.gz"
+          
+          for i in {1..5}; do
+            if curl -sSf --head "$BINARY_URL" > /dev/null; then
+              echo "AUR binaries available"
+              break
+            else
+              echo "Waiting for AUR binaries... ($i/5)"
+              sleep 30
+            fi
+            if [ $i -eq 5 ]; then
+              echo "AUR binaries not available"
+              exit 1
+            fi
+          done
 
-            - name: Download installation script
-              shell: bash
-              run: |
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/${{ matrix.script }} -o ${{ matrix.script }}
-                  ls -la ${{ matrix.script }}
+      - name: Generate AUR PKGBUILD files
+        run: |
+          chmod +x scripts/generate-aur-pkgbuild.sh
+          ./scripts/generate-aur-pkgbuild.sh \
+            --version "${{ env.VERSION }}" \
+            --output "./aur-packages" \
+            --force
 
-            - name: Execute installation script (Unix/Linux/macOS)
-              if: matrix.shell == 'bash'
-              shell: bash
-              run: |
-                  chmod +x ${{ matrix.script }}
-                  ./${{ matrix.script }} --version ${{ github.ref_name }}
+      - name: Publish source package to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        with:
+          pkgname: awesome-omarchy-tui
+          pkgbuild: ./aur-packages/PKGBUILD-source
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to version ${{ env.VERSION }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
 
-            - name: Execute installation script (Windows)
-              if: matrix.shell == 'pwsh'
-              shell: pwsh
-              run: |
-                  .\${{ matrix.script }} -Version ${{ github.ref_name }}
-
-            - name: Verify script installation and functionality (Unix/Linux/macOS)
-              if: matrix.shell == 'bash'
-              shell: bash
-              run: |
-                  # Verify the binary was installed and is functional
-                  if [ -f "/usr/local/bin/awsomarchy" ]; then
-                      /usr/local/bin/awsomarchy help
-                      echo "✅ Script installation successful!"
-                  elif [ -f "$HOME/.local/bin/awsomarchy" ]; then
-                      $HOME/.local/bin/awsomarchy help
-                      echo "✅ Script installation successful!"
-                  elif [ -f "$HOME/bin/awsomarchy" ]; then
-                      $HOME/bin/awsomarchy help
-                      echo "✅ Script installation successful!"
-                  elif command -v awsomarchy >/dev/null 2>&1; then
-                      awsomarchy help
-                      echo "✅ Script installation successful!"
-                  else
-                      echo "❌ Binary not found after script installation!"
-                      exit 1
-                  fi
-
-            - name: Verify script installation and functionality (Windows)
-              if: matrix.shell == 'pwsh'
-              shell: pwsh
-              run: |
-                  # Verify the binary was installed and is functional  
-                  $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"
-                  if (Test-Path $binaryPath) {
-                      & $binaryPath help
-                      Write-Host "✅ Script installation successful!"
-                  }
-                  elseif (Get-Command awsomarchy -ErrorAction SilentlyContinue) {
-                      awsomarchy help
-                      Write-Host "✅ Script installation successful (found in PATH)!"
-                  }
-                  else {
-                      Write-Error "❌ Binary not found after script installation!"
-                      exit 1
-                  }
-
-    # Test advanced installation scenarios and edge cases
-    test-advanced-installation:
-        needs: upload-assets
-        continue-on-error: true
-        strategy:
-            matrix:
-                include:
-                    - os: ubuntu-latest
-                      test_type: "custom_dir"
-                      description: "Custom directory installation"
-                    - os: macos-latest
-                      test_type: "user_local" 
-                      description: "User-local installation"
-                    - os: windows-latest
-                      test_type: "custom_dir"
-                      description: "Custom directory installation"
-        runs-on: ${{ matrix.os }}
-        steps:
-            - name: Wait for release assets to be available
-              run: sleep 30
-
-            - name: Test custom directory installation (Unix/Linux/macOS)
-              if: matrix.test_type == 'custom_dir' && runner.os != 'Windows'
-              shell: bash
-              run: |
-                  # Test installation to a custom directory
-                  mkdir -p $HOME/test-install
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --dir $HOME/test-install --version ${{ github.ref_name }}
-                  
-                  # Verify installation
-                  if [ -f "$HOME/test-install/awsomarchy" ]; then
-                      $HOME/test-install/awsomarchy help
-                      echo "✅ Custom directory installation successful!"
-                  else
-                      echo "❌ Custom directory installation failed!"
-                      exit 1
-                  fi
-
-            - name: Test user-local installation (macOS)
-              if: matrix.test_type == 'user_local'
-              shell: bash
-              run: |
-                  # Test installation to user-local directory
-                  mkdir -p $HOME/.local/bin
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --dir $HOME/.local/bin --version ${{ github.ref_name }}
-                  
-                  # Verify installation
-                  if [ -f "$HOME/.local/bin/awsomarchy" ]; then
-                      $HOME/.local/bin/awsomarchy help
-                      echo "✅ User-local installation successful!"
-                  else
-                      echo "❌ User-local installation failed!"
-                      exit 1
-                  fi
-
-            - name: Test custom directory installation (Windows)
-              if: matrix.test_type == 'custom_dir' && runner.os == 'Windows'
-              shell: pwsh
-              run: |
-                  # Test installation to a custom directory
-                  $customDir = "$env:USERPROFILE\test-install"
-                  New-Item -Path $customDir -ItemType Directory -Force
-                  
-                  $script = iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1"
-                  $scriptBlock = [ScriptBlock]::Create($script.Content)
-                  & $scriptBlock -InstallDir $customDir -Version "${{ github.ref_name }}"
-                  
-                  # Verify installation
-                  $binaryPath = "$customDir\awsomarchy.exe"
-                  if (Test-Path $binaryPath) {
-                      & $binaryPath help
-                      Write-Host "✅ Custom directory installation successful!"
-                  }
-                  else {
-                      Write-Error "❌ Custom directory installation failed!"
-                      exit 1
-                  }
-
-    # Comprehensive functionality test across all installation methods
-    test-installation-functionality:
-        needs: [test-binary-installation, test-curl-piped-installation, test-powershell-piped-installation, test-script-installation, test-advanced-installation]
-        continue-on-error: true
-        strategy:
-            matrix:
-                os: [ubuntu-latest, macos-latest, windows-latest]
-        runs-on: ${{ matrix.os }}
-        steps:
-            - name: Download and test basic functionality (Unix/Linux/macOS)
-              if: runner.os != 'Windows'
-              shell: bash
-              run: |
-                  # Quick installation for functionality testing
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --version ${{ github.ref_name }}
-                  
-                  # Find the binary
-                  BINARY_PATH=""
-                  if [ -f "/usr/local/bin/awsomarchy" ]; then
-                      BINARY_PATH="/usr/local/bin/awsomarchy"
-                  elif [ -f "$HOME/.local/bin/awsomarchy" ]; then
-                      BINARY_PATH="$HOME/.local/bin/awsomarchy"
-                  elif [ -f "$HOME/bin/awsomarchy" ]; then
-                      BINARY_PATH="$HOME/bin/awsomarchy"
-                  elif command -v awsomarchy >/dev/null 2>&1; then
-                      BINARY_PATH="awsomarchy"
-                  fi
-                  
-                  if [ -n "$BINARY_PATH" ]; then
-                      echo "Testing functionality with binary at: $BINARY_PATH"
-                      $BINARY_PATH help
-                      $BINARY_PATH version
-                      echo "✅ All functionality tests passed!"
-                  else
-                      echo "❌ Binary not found for functionality testing!"
-                      exit 1
-                  fi
-
-            - name: Download and test basic functionality (Windows)
-              if: runner.os == 'Windows'
-              shell: pwsh
-              run: |
-                  # Quick installation for functionality testing  
-                  $script = iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1"
-                  $scriptBlock = [ScriptBlock]::Create($script.Content)
-                  & $scriptBlock -Version "${{ github.ref_name }}"
-                  
-                  # Find the binary
-                  $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"
-                  if (Test-Path $binaryPath) {
-                      Write-Host "Testing functionality with binary at: $binaryPath"
-                      & $binaryPath help
-                      & $binaryPath version
-                      Write-Host "✅ All functionality tests passed!"
-                  }
-                  elseif (Get-Command awsomarchy -ErrorAction SilentlyContinue) {
-                      Write-Host "Testing functionality with binary in PATH"
-                      awsomarchy help
-                      awsomarchy version  
-                      Write-Host "✅ All functionality tests passed!"
-                  }
-                  else {
-                      Write-Error "❌ Binary not found for functionality testing!"
-                      exit 1
-                  }
-
-    # AUR package publishing for Arch Linux users
-    publish-aur:
-        needs: [upload-assets, create-release]
-        # Only run on version tags (not prereleases) and not on workflow dispatch
-        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
-        runs-on: ubuntu-latest
-        environment: production
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v5
-              with:
-                  fetch-depth: 0
-
-            - name: Setup environment variables
-              run: |
-                  echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
-                  echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
-            - name: Verify release assets are available
-              run: |
-                  echo "Waiting for release assets to be fully available..."
-                  sleep 30
-                  
-                  # Verify that the binary release exists
-                  BINARY_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/${{ env.BINARY_NAME }}-x86_64-unknown-linux-gnu.tar.gz"
-                  echo "Checking binary availability at: $BINARY_URL"
-                  
-                  # Retry up to 5 times with exponential backoff
-                  for i in {1..5}; do
-                      if curl -sSf --head "$BINARY_URL" > /dev/null; then
-                          echo "✅ Binary release is available"
-                          break
-                      else
-                          echo "⏳ Attempt $i: Binary not yet available, waiting..."
-                          sleep $((i * 10))
-                      fi
-                      if [ $i -eq 5 ]; then
-                          echo "❌ Binary release not available after 5 attempts"
-                          exit 1
-                      fi
-                  done
-
-            - name: Generate AUR PKGBUILD files
-              run: |
-                  echo "🔄 Generating PKGBUILD files for version ${{ env.VERSION }}"
-                  
-                  # Make the script executable
-                  chmod +x scripts/generate-aur-pkgbuild.sh
-                  
-                  # Generate PKGBUILD files for both source and binary packages
-                  ./scripts/generate-aur-pkgbuild.sh \
-                      --version "${{ env.VERSION }}" \
-                      --output "./aur-packages" \
-                      --force
-                  
-                  echo "📁 Generated files:"
-                  ls -la ./aur-packages/
-
-            - name: Publish source package to AUR
-              uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
-              with:
-                  pkgname: awesome-omarchy-tui
-                  pkgbuild: ./aur-packages/PKGBUILD-source
-                  commit_username: ${{ secrets.AUR_USERNAME }}
-                  commit_email: ${{ secrets.AUR_EMAIL }}
-                  ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-                  commit_message: "Update to version ${{ env.VERSION }}"
-                  ssh_keyscan_types: rsa,ecdsa,ed25519
-
-            - name: Publish binary package to AUR
-              uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
-              with:
-                  pkgname: awesome-omarchy-tui-bin
-                  pkgbuild: ./aur-packages/PKGBUILD-bin
-                  commit_username: ${{ secrets.AUR_USERNAME }}
-                  commit_email: ${{ secrets.AUR_EMAIL }}
-                  ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-                  commit_message: "Update to version ${{ env.VERSION }}"
-                  ssh_keyscan_types: rsa,ecdsa,ed25519
-
-            - name: Verify AUR package publishing
-              run: |
-                  echo "✅ AUR packages published successfully!"
-                  echo "📦 Source package: https://aur.archlinux.org/packages/awesome-omarchy-tui"
-                  echo "📦 Binary package: https://aur.archlinux.org/packages/awesome-omarchy-tui-bin"
-                  echo ""
-                  echo "Users can now install with:"
-                  echo "  • yay -S awesome-omarchy-tui      (build from source)"
-                  echo "  • yay -S awesome-omarchy-tui-bin  (pre-compiled binary)"
+      - name: Publish binary package to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        with:
+          pkgname: awesome-omarchy-tui-bin
+          pkgbuild: ./aur-packages/PKGBUILD-bin
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to version ${{ env.VERSION }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519

@@ -12,6 +12,15 @@ Terminal UI for browsing [awesome-omarchy](https://github.com/aorumbayev/awesome
 
 ## Install
 
+**Arch Linux (AUR):**
+```bash
+# Using pacman (requires AUR helper)
+pacman -Sy awesome-omarchy-tui-bin
+
+# Using yay
+yay -Sy awesome-omarchy-tui-bin
+```
+
 **Cargo:**
 ```bash
 cargo install awesome-omarchy-tui
@@ -38,6 +47,7 @@ awsomarchy update    # Update to latest (direct install only)
 ```
 
 **Updates:**
+- AUR package: `pacman -Syu awesome-omarchy-tui-bin` or `yay -Syu awesome-omarchy-tui-bin`
 - Direct install: `awsomarchy update`
 - Cargo install: `cargo install awesome-omarchy-tui`
 

@@ -7,6 +7,10 @@
 # This script generates compliant PKGBUILD files for both source and binary
 # variants of awesome-omarchy-tui, following AUR submission guidelines.
 #
+# IMPORTANT: Both source and binary packages exclude the "updater" feature
+# to ensure package managers (AUR/pacman) handle updates, not the application.
+# This follows the same principle used for crates.io publishing.
+#
 # Author: Altynbek Orumbayev <aorumbayev@pm.me>
 # Repository: https://github.com/aorumbayev/awesome-omarchy-tui
 # License: MIT
@@ -128,6 +132,7 @@ AUR COMPLIANCE FEATURES:
     ✓ Support for both x86_64 architectures
     ✓ Proper maintainer information and comments
     ✓ Generated .SRCINFO files for AUR submission
+    ✓ Updater feature excluded for proper package manager integration
 
 ARCHITECTURE SUPPORT:
     x86_64                  Full support for both source and binary packages
@@ -287,7 +292,7 @@ calculate_binary_checksum() {
     
     log_step "Calculating binary checksum ($arch)"
     
-    local binary_url="https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v${VERSION}/${BINARY_NAME}-${arch}-unknown-linux-gnu.tar.gz"
+    local binary_url="https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v${VERSION}/${BINARY_NAME}-aur-${arch}-unknown-linux-gnu.tar.gz"
     
     local checksum
     if ! checksum=$(curl -fsSL "$binary_url" | sha256sum | cut -d' ' -f1); then
@@ -320,6 +325,10 @@ generate_source_pkgbuild() {
 # This is the source package for awesome-omarchy-tui, which builds the application 
 # from source using the Rust toolchain. For a binary package (pre-compiled), 
 # see awesome-omarchy-tui-bin.
+#
+# NOTE: The updater feature is intentionally disabled for AUR packages since
+# package managers (pacman/AUR) should handle updates, not the application itself.
+# This ensures consistency with standard Linux package management practices.
 
 pkgname=$SOURCE_PKGNAME
 pkgver=$VERSION
@@ -342,12 +351,15 @@ build() {
     cd "\${srcdir}/\${pkgname}-\${pkgver}"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
+    # Build without default features to exclude the updater feature
+    # This allows package managers to handle updates instead of the application
     cargo build --frozen --release --no-default-features
 }
 
 check() {
     cd "\${srcdir}/\${pkgname}-\${pkgver}"
     export RUSTUP_TOOLCHAIN=stable
+    # Test without default features to match the build configuration
     cargo test --frozen --release --no-default-features
 }
 
@@ -375,6 +387,11 @@ generate_binary_pkgbuild() {
 #
 # This is the binary package for awesome-omarchy-tui, which provides pre-compiled
 # binaries for faster installation. For building from source, see awesome-omarchy-tui.
+#
+# NOTE: The pre-compiled binaries are built without the updater feature to ensure
+# package managers (pacman/AUR) handle updates instead of the application itself.
+# This follows standard Linux package management practices and matches both the
+# source package configuration and crates.io publishing approach.
 
 pkgname=$BINARY_PKGNAME
 pkgver=$VERSION
@@ -385,11 +402,11 @@ url="$REPOSITORY"
 license=('$LICENSE')
 provides=('$SOURCE_PKGNAME')
 conflicts=('$SOURCE_PKGNAME')
-source_x86_64=("\${pkgname%-bin}-\${pkgver}-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v\${pkgver}/$BINARY_NAME-x86_64-unknown-linux-gnu.tar.gz")
+source_x86_64=("\${pkgname%-bin}-\${pkgver}-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v\${pkgver}/$BINARY_NAME-aur-x86_64-unknown-linux-gnu.tar.gz")
 sha256sums_x86_64=('$x86_64_checksum')
 
 package() {
-    # Install binary
+    # Install binary (built without updater feature for proper package manager integration)
     install -Dm0755 "\$srcdir/$BINARY_NAME" "\$pkgdir/usr/bin/$BINARY_NAME"
     
     # Install documentation and license files required by AUR guidelines
@@ -481,7 +498,7 @@ pkgbase = $BINARY_PKGNAME
 	license = $LICENSE
 	provides = $SOURCE_PKGNAME
 	conflicts = $SOURCE_PKGNAME
-	source_x86_64 = $BINARY_PKGNAME-$VERSION-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$VERSION/$BINARY_NAME-x86_64-unknown-linux-gnu.tar.gz
+	source_x86_64 = $BINARY_PKGNAME-$VERSION-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$VERSION/$BINARY_NAME-aur-x86_64-unknown-linux-gnu.tar.gz
 	sha256sums_x86_64 = $x86_64_checksum
 
 pkgname = $BINARY_PKGNAME
