@@ -46,7 +46,7 @@ const LOGO: &str = r#"
 
 #[derive(Parser)]
 #[command(name = "awsomarchy")]
-#[command(version = VERSION, about = "Unofficial terminal user interface for Algorand Omarchy exploration", long_about = None)]
+#[command(version = VERSION, about = "A tui for browsing awesome-omarchy repository", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -78,9 +78,8 @@ async fn main() -> Result<()> {
         Some(Commands::Version) => {
             println!("{}", LOGO);
             println!("awsomarchy v{}", VERSION);
-            println!("Unofficial terminal user interface for Algorand Omarchy exploration");
+            println!("A tui for browsing awesome-omarchy repository");
             println!("\nFeatures:");
-            println!("• 🎨 Beautiful interface with professional visual design");
             println!("• ⚡ Lightning fast with intelligent caching");
             println!("• 🧭 Intuitive vim-like navigation");
             println!("• 🔍 Powerful real-time search");
