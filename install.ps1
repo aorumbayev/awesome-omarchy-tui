@@ -249,7 +249,7 @@ Write-Info "Installing awsomarchy $Version for $arch-$os..."
 
 # Construct package name and download URLs
 $binaryName = "awsomarchy"
-$pkgName = "$binaryName-$arch-$os.zip"
+$pkgName = "$binaryName-standard-$arch-$os.zip"
 $downloadUrl = "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$Version/$pkgName"
 $sha256Url = Get-Sha256Url -BinaryUrl $downloadUrl
 

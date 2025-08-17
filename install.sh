@@ -315,7 +315,7 @@ print_msg "Installing awsomarchy $VERSION for $ARCH-$OS..."
 
 # Construct package name and download URL
 BINARY_NAME="awsomarchy"
-PKG_NAME="${BINARY_NAME}-${ARCH}-${OS}.tar.gz"
+PKG_NAME="${BINARY_NAME}-standard-${ARCH}-${OS}.tar.gz"
 DOWNLOAD_URL="https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$VERSION/$PKG_NAME"
 SHA256_URL=$(construct_sha256_url "$DOWNLOAD_URL")
 

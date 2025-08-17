@@ -199,9 +199,9 @@ async fn verify_binary_availability(version: &str) -> Result<Option<String>> {
     // Construct the expected binary download URL
     let target = get_target_triple()?;
     let archive_name = if target.contains("windows") {
-        format!("awsomarchy-{}.zip", target)
+        format!("awsomarchy-standard-{}.zip", target)
     } else {
-        format!("awsomarchy-{}.tar.gz", target)
+        format!("awsomarchy-standard-{}.tar.gz", target)
     };
 
     let binary_url = format!(
@@ -476,9 +476,9 @@ async fn perform_safe_update(
         // Get the target and construct URLs
         let target = get_target_triple()?;
         let archive_name = if target.contains("windows") {
-            format!("awsomarchy-{}.zip", target)
+        format!("awsomarchy-standard-{}.zip", target)
         } else {
-            format!("awsomarchy-{}.tar.gz", target)
+        format!("awsomarchy-standard-{}.tar.gz", target)
         };
 
         // Get the latest release version

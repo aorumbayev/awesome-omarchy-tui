@@ -92,47 +92,17 @@ jobs:
 
   build-aur:
     needs: create-release
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-
-      - name: Install cross-compilation dependencies
-        if: matrix.target == 'x86_64-unknown-linux-musl' || contains(matrix.target, 'musl')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools musl-dev
-
-      - name: Install cross-compilation dependencies for aarch64
-        if: contains(matrix.target, 'aarch64')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Set cross-compilation environment
-        if: contains(matrix.target, 'aarch64-unknown-linux-gnu')
-        run: |
-          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          targets: x86_64-unknown-linux-gnu
 
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: ${{ env.BINARY_NAME }}
-          target: ${{ matrix.target }}
+          target: x86_64-unknown-linux-gnu
           include: LICENSE,README.md
           checksum: sha256
           archive: $bin-aur-$target
