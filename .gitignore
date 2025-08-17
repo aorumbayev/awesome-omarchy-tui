@@ -32,3 +32,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Task tracking files (orchestrator workspace)
+.tasks/
