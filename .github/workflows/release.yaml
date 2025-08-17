@@ -432,3 +432,93 @@ jobs:
                       Write-Error "❌ Binary not found for functionality testing!"
                       exit 1
                   }
+
+    # AUR package publishing for Arch Linux users
+    publish-aur:
+        needs: [upload-assets, create-release]
+        # Only run on version tags (not prereleases) and not on workflow dispatch
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
+        runs-on: ubuntu-latest
+        environment: production
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+
+            - name: Setup environment variables
+              run: |
+                  echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+                  echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+            - name: Verify release assets are available
+              run: |
+                  echo "Waiting for release assets to be fully available..."
+                  sleep 30
+                  
+                  # Verify that the binary release exists
+                  BINARY_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/${{ env.BINARY_NAME }}-x86_64-unknown-linux-gnu.tar.gz"
+                  echo "Checking binary availability at: $BINARY_URL"
+                  
+                  # Retry up to 5 times with exponential backoff
+                  for i in {1..5}; do
+                      if curl -sSf --head "$BINARY_URL" > /dev/null; then
+                          echo "✅ Binary release is available"
+                          break
+                      else
+                          echo "⏳ Attempt $i: Binary not yet available, waiting..."
+                          sleep $((i * 10))
+                      fi
+                      if [ $i -eq 5 ]; then
+                          echo "❌ Binary release not available after 5 attempts"
+                          exit 1
+                      fi
+                  done
+
+            - name: Generate AUR PKGBUILD files
+              run: |
+                  echo "🔄 Generating PKGBUILD files for version ${{ env.VERSION }}"
+                  
+                  # Make the script executable
+                  chmod +x scripts/generate-aur-pkgbuild.sh
+                  
+                  # Generate PKGBUILD files for both source and binary packages
+                  ./scripts/generate-aur-pkgbuild.sh \
+                      --version "${{ env.VERSION }}" \
+                      --output "./aur-packages" \
+                      --force
+                  
+                  echo "📁 Generated files:"
+                  ls -la ./aur-packages/
+
+            - name: Publish source package to AUR
+              uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+              with:
+                  pkgname: awesome-omarchy-tui
+                  pkgbuild: ./aur-packages/PKGBUILD-source
+                  commit_username: ${{ secrets.AUR_USERNAME }}
+                  commit_email: ${{ secrets.AUR_EMAIL }}
+                  ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+                  commit_message: "Update to version ${{ env.VERSION }}"
+                  ssh_keyscan_types: rsa,ecdsa,ed25519
+
+            - name: Publish binary package to AUR
+              uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+              with:
+                  pkgname: awesome-omarchy-tui-bin
+                  pkgbuild: ./aur-packages/PKGBUILD-bin
+                  commit_username: ${{ secrets.AUR_USERNAME }}
+                  commit_email: ${{ secrets.AUR_EMAIL }}
+                  ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+                  commit_message: "Update to version ${{ env.VERSION }}"
+                  ssh_keyscan_types: rsa,ecdsa,ed25519
+
+            - name: Verify AUR package publishing
+              run: |
+                  echo "✅ AUR packages published successfully!"
+                  echo "📦 Source package: https://aur.archlinux.org/packages/awesome-omarchy-tui"
+                  echo "📦 Binary package: https://aur.archlinux.org/packages/awesome-omarchy-tui-bin"
+                  echo ""
+                  echo "Users can now install with:"
+                  echo "  • yay -S awesome-omarchy-tui      (build from source)"
+                  echo "  • yay -S awesome-omarchy-tui-bin  (pre-compiled binary)"

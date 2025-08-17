@@ -35,3 +35,19 @@ Thumbs.db
 
 # Task tracking files (orchestrator workspace)
 .tasks/
+
+# AUR build and test artifacts
+aur-pkgbuilds/
+aur-packages/
+*-test/
+test-output/
+ci-test/
+source-only-test/
+binary-only-test/
+error-test/
+
+# Generated PKGBUILD files (temporary)
+PKGBUILD-source
+PKGBUILD-bin
+.SRCINFO-source
+.SRCINFO-bin
