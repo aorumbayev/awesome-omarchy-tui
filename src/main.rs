@@ -46,7 +46,7 @@ const LOGO: &str = r#"
 
 #[derive(Parser)]
 #[command(name = "awsomarchy")]
-#[command(version = VERSION, about = "A beautiful terminal UI for browsing the awesome-omarchy repository", long_about = None, disable_version_flag = true, disable_help_flag = true)]
+#[command(version = VERSION, about = "Unofficial terminal user interface for Algorand Omarchy exploration", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -54,7 +54,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Update awsomarchy to the latest version
+    /// Update to the latest version
     #[cfg(feature = "updater")]
     Update {
         /// Force update even if already on latest version
@@ -63,8 +63,6 @@ enum Commands {
     },
     /// Show version information
     Version,
-    /// Show help information
-    Help,
 }
 
 #[tokio::main]
@@ -80,38 +78,14 @@ async fn main() -> Result<()> {
         Some(Commands::Version) => {
             println!("{}", LOGO);
             println!("awsomarchy v{}", VERSION);
-            println!("A beautiful terminal UI for browsing the awesome-omarchy repository");
+            println!("Unofficial terminal user interface for Algorand Omarchy exploration");
             println!("\nFeatures:");
+            println!("• 🎨 Beautiful interface with professional visual design");
             println!("• ⚡ Lightning fast with intelligent caching");
             println!("• 🧭 Intuitive vim-like navigation");
             println!("• 🔍 Powerful real-time search");
             println!("• 📱 Responsive sidebar layout");
             println!("• 🔄 Self-updating capability");
-            return Ok(());
-        }
-        Some(Commands::Help) => {
-            println!("{}", LOGO);
-            println!("awsomarchy v{}", VERSION);
-            println!("A beautiful terminal UI for browsing the awesome-omarchy repository\n");
-
-            println!("USAGE:");
-            println!("    awsomarchy [COMMAND]\n");
-
-            println!("COMMANDS:");
-            #[cfg(feature = "updater")]
-            println!("    update     Update to the latest version");
-            println!("    version    Show version information");
-            println!("    help       Show this help message\n");
-
-            println!("NAVIGATION (in TUI mode):");
-            println!("    h/l        Switch between sidebar and content");
-            println!("    j/k        Navigate within current area");
-            println!("    /          Open search");
-            println!("    Enter      Open repository (from search)");
-            println!("    G          Open awesome-omarchy on GitHub");
-            println!("    R          Reload content");
-            println!("    Q          Quit application");
-
             return Ok(());
         }
         None => {
