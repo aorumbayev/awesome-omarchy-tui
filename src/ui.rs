@@ -672,6 +672,13 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
             ),
             Span::styled(": Navigate │ ", Style::default().fg(Color::DarkGray)),
             Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(": Open URL │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
                 "Tab",
                 Style::default()
                     .fg(Color::Blue)

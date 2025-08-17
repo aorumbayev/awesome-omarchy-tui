@@ -224,6 +224,23 @@ impl App {
             KeyCode::End => {
                 self.list_last();
             }
+            // Enter key - Open selected repository URL (only in content area)
+            KeyCode::Enter => match self.focus_area {
+                FocusArea::Content => {
+                    // Get the currently selected repository entry and open its URL
+                    if let Some(tab) = self.tabs.get(self.current_tab)
+                        && let Some(selected_idx) = tab.list_state.selected_index
+                        && let Some(ref readme) = self.readme_content
+                        && let Some(section) = readme.sections.get(tab.section_index)
+                        && let Some(entry) = section.entries.get(selected_idx)
+                    {
+                        self.open_url(&entry.url);
+                    }
+                }
+                FocusArea::Sidebar => {
+                    // No action for Enter in sidebar - could be extended in the future
+                }
+            },
             // Quit
             KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.quit = true;
