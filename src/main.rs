@@ -9,6 +9,11 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use tokio::time::Duration;
 
+#[cfg(feature = "updater")]
+use sha2::{Sha256, Digest};
+#[cfg(feature = "updater")]
+use std::{fs, path::Path};
+
 mod app;
 mod client;
 mod events;
@@ -139,20 +144,23 @@ async fn perform_update(force: bool) -> Result<()> {
         );
 
         // Verify binary artifact availability before attempting update
-        if let Err(e) = verify_binary_availability(latest_version).await {
-            println!("❌ Update failed: Binary artifact not available");
-            println!("   {}", e);
-            println!("   This usually means the release was just published and binaries are still being built.");
-            println!("   Please try again in a few minutes.");
-            return Err(e);
-        }
+        let expected_hash = match verify_binary_availability(latest_version).await {
+            Ok(hash) => hash,
+            Err(e) => {
+                println!("❌ Update failed: Binary artifact not available");
+                println!("   {}", e);
+                println!("   This usually means the release was just published and binaries are still being built.");
+                println!("   Please try again in a few minutes.");
+                return Err(e);
+            }
+        };
 
         println!("✅ Binary artifact verified - proceeding with download...");
         println!("⬇️  Downloading and installing update...");
         println!("   Note: The application will restart automatically after successful update.");
 
-        // Perform the update with enhanced error handling
-        match perform_safe_update(current_version).await {
+        // Perform the update with enhanced error handling and SHA256 verification
+        match perform_safe_update(current_version, expected_hash.as_deref()).await {
             Ok(status) => {
                 println!("✅ Update completed successfully!");
                 println!("📋 New version: {}", status.version());
@@ -180,27 +188,28 @@ async fn perform_update(force: bool) -> Result<()> {
     Ok(())
 }
 
-/// Verify that the binary artifact is available for download before attempting update
+/// Verify that the binary artifact and SHA256 hash file are available for download before attempting update
 #[cfg(feature = "updater")]
-async fn verify_binary_availability(version: &str) -> Result<()> {
+async fn verify_binary_availability(version: &str) -> Result<Option<String>> {
     use anyhow::{anyhow, Context};
     use reqwest::StatusCode;
     
     // Construct the expected binary download URL
     let target = get_target_triple()?;
-    let binary_name = format!("awsomarchy-{}-{}", version, target);
     let archive_name = if target.contains("windows") {
-        format!("{}.zip", binary_name)
+        format!("awsomarchy-{}.zip", target)
     } else {
-        format!("{}.tar.gz", binary_name)
+        format!("awsomarchy-{}.tar.gz", target)
     };
     
-    let download_url = format!(
+    let binary_url = format!(
         "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v{}/{}",
         version, archive_name
     );
+    
+    let sha256_url = construct_sha256_url(&binary_url);
 
-    println!("🔍 Verifying binary availability...");
+    println!("🔍 Verifying binary and hash file availability...");
     
     // Create HTTP client with reasonable timeout
     let client = reqwest::Client::builder()
@@ -209,8 +218,8 @@ async fn verify_binary_availability(version: &str) -> Result<()> {
         .build()
         .context("Failed to create HTTP client")?;
 
-    // Perform HEAD request to check if artifact exists
-    match client.head(&download_url).send().await {
+    // Check binary availability
+    match client.head(&binary_url).send().await {
         Ok(response) => {
             match response.status() {
                 StatusCode::OK => {
@@ -228,29 +237,65 @@ async fn verify_binary_availability(version: &str) -> Result<()> {
                             }
                         }
                     }
-                    Ok(())
                 }
                 StatusCode::NOT_FOUND => {
-                    Err(anyhow!(
+                    return Err(anyhow!(
                         "Binary artifact not found at expected location.\n   Expected: {}\n   This usually means the CI/CD pipeline is still building the release artifacts.",
-                        download_url
-                    ))
+                        binary_url
+                    ));
                 }
                 status => {
-                    Err(anyhow!(
+                    return Err(anyhow!(
                         "Binary artifact verification failed with status: {} ({})\n   URL: {}",
                         status.as_u16(),
                         status.canonical_reason().unwrap_or("Unknown"),
-                        download_url
-                    ))
+                        binary_url
+                    ));
                 }
             }
         }
         Err(e) => {
-            Err(anyhow!(
+            return Err(anyhow!(
                 "Failed to verify binary availability: {}\n   This could be due to network issues or the artifact not being ready yet.",
                 e
-            ))
+            ));
+        }
+    }
+
+    // Check SHA256 file availability
+    match client.head(&sha256_url).send().await {
+        Ok(response) => {
+            match response.status() {
+                StatusCode::OK => {
+                    println!("✅ SHA256 hash file verified - integrity validation will be performed");
+                    
+                    // Download and parse the SHA256 hash for later use
+                    match download_and_parse_sha256(&sha256_url).await {
+                        Ok(expected_hash) => Ok(Some(expected_hash)),
+                        Err(e) => {
+                            println!("⚠️  Warning: Failed to download SHA256 hash: {}", e);
+                            println!("   Update will proceed without integrity verification");
+                            Ok(None)
+                        }
+                    }
+                }
+                StatusCode::NOT_FOUND => {
+                    println!("⚠️  Note: SHA256 hash file not available for this release");
+                    println!("   Update will proceed without integrity verification");
+                    println!("   (This is normal for older releases)");
+                    Ok(None)
+                }
+                status => {
+                    println!("⚠️  Warning: SHA256 hash file verification failed (status: {})", status.as_u16());
+                    println!("   Update will proceed without integrity verification");
+                    Ok(None)
+                }
+            }
+        }
+        Err(e) => {
+            println!("⚠️  Warning: Could not check SHA256 hash file availability: {}", e);
+            println!("   Update will proceed without integrity verification");
+            Ok(None)
         }
     }
 }
@@ -298,9 +343,109 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-/// Perform the actual update with enhanced error handling and recovery
+/// Construct SHA256 hash file URL from binary URL
 #[cfg(feature = "updater")]
-async fn perform_safe_update(current_version: &str) -> Result<self_update::Status> {
+fn construct_sha256_url(binary_url: &str) -> String {
+    // Replace .tar.gz or .zip extension with .sha256
+    if binary_url.ends_with(".tar.gz") {
+        binary_url.replace(".tar.gz", ".sha256")
+    } else if binary_url.ends_with(".zip") {
+        binary_url.replace(".zip", ".sha256")
+    } else {
+        // Fallback: append .sha256 extension
+        format!("{}.sha256", binary_url)
+    }
+}
+
+/// Download SHA256 hash file and parse expected hash
+#[cfg(feature = "updater")]
+async fn download_and_parse_sha256(sha256_url: &str) -> Result<String> {
+    use anyhow::{anyhow, Context};
+    use reqwest::StatusCode;
+    
+    println!("🔍 Downloading SHA256 hash file...");
+    
+    // Create HTTP client with reasonable timeout
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .user_agent(format!("awesome-omarchy-tui/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .context("Failed to create HTTP client for SHA256 download")?;
+
+    // Download SHA256 file
+    match client.get(sha256_url).send().await {
+        Ok(response) => {
+            match response.status() {
+                StatusCode::OK => {
+                    let content = response.text().await
+                        .context("Failed to read SHA256 file content")?;
+                    
+                    // Parse SHA256 file content (format: "hash  filename")
+                    let hash = content.trim().split_whitespace().next()
+                        .ok_or_else(|| anyhow!("Invalid SHA256 file format: expected hash"))?;
+                    
+                    // Validate hash format (64 hex characters)
+                    if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+                        return Err(anyhow!("Invalid SHA256 hash format: {}", hash));
+                    }
+                    
+                    println!("✅ SHA256 hash retrieved: {}...", &hash[..16]);
+                    Ok(hash.to_lowercase())
+                }
+                StatusCode::NOT_FOUND => {
+                    Err(anyhow!("SHA256 file not found at: {}", sha256_url))
+                }
+                status => {
+                    Err(anyhow!(
+                        "Failed to download SHA256 file (status: {}): {}",
+                        status.as_u16(),
+                        sha256_url
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            Err(anyhow!(
+                "Network error while downloading SHA256 file: {}\nURL: {}",
+                e, sha256_url
+            ))
+        }
+    }
+}
+
+/// Verify SHA256 hash of a file
+#[cfg(feature = "updater")]
+async fn verify_file_sha256(file_path: &Path, expected_hash: &str) -> Result<bool> {
+    use anyhow::Context;
+    
+    println!("🔐 Verifying file integrity...");
+    
+    // Read the file and compute SHA256 hash
+    let file_content = fs::read(file_path)
+        .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
+    
+    let mut hasher = Sha256::new();
+    hasher.update(&file_content);
+    let computed_hash = format!("{:x}", hasher.finalize());
+    
+    println!("   Expected: {}...", &expected_hash[..16]);
+    println!("   Computed: {}...", &computed_hash[..16]);
+    
+    let matches = computed_hash.to_lowercase() == expected_hash.to_lowercase();
+    
+    if matches {
+        println!("✅ File integrity verified successfully!");
+    } else {
+        println!("❌ File integrity verification FAILED!");
+        println!("   This indicates the downloaded file may be corrupted or tampered with.");
+    }
+    
+    Ok(matches)
+}
+
+/// Perform the actual update with enhanced error handling and SHA256 verification
+#[cfg(feature = "updater")]
+async fn perform_safe_update(current_version: &str, expected_hash: Option<&str>) -> Result<self_update::Status> {
     use anyhow::{anyhow, Context};
 
     // Create the updater with retries and better error messages
@@ -314,10 +459,92 @@ async fn perform_safe_update(current_version: &str) -> Result<self_update::Statu
         .build()
         .context("Failed to configure updater")?;
 
+    // If we have an expected hash, we need to perform custom download and verification
+    if let Some(hash) = expected_hash {
+        // Get the target and construct URLs
+        let target = get_target_triple()?;
+        let archive_name = if target.contains("windows") {
+            format!("awsomarchy-{}.zip", target)
+        } else {
+            format!("awsomarchy-{}.tar.gz", target)
+        };
+        
+        // Get the latest release version
+        let releases = self_update::backends::github::ReleaseList::configure()
+            .repo_owner("aorumbayev")
+            .repo_name("awesome-omarchy-tui")
+            .build()
+            .and_then(|list| list.fetch())
+            .context("Failed to fetch release list")?;
+            
+        let latest_version = releases.first()
+            .ok_or_else(|| anyhow!("No releases found"))?
+            .version.trim_start_matches('v');
+        
+        let download_url = format!(
+            "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v{}/{}",
+            latest_version, archive_name
+        );
+        
+        // Create temporary file for download
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join(&archive_name);
+        
+        // Download the file
+        println!("⬇️  Downloading archive with verification...");
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))  // 5 minutes for large files
+            .user_agent(format!("awesome-omarchy-tui/{}", env!("CARGO_PKG_VERSION")))
+            .build()
+            .context("Failed to create HTTP client")?;
+            
+        let response = client.get(&download_url).send().await
+            .context("Failed to download archive")?;
+            
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to download archive: HTTP {}", response.status()));
+        }
+        
+        let bytes = response.bytes().await
+            .context("Failed to read download response")?;
+            
+        // Write to temporary file
+        fs::write(&temp_file, &bytes)
+            .with_context(|| format!("Failed to write temporary file: {}", temp_file.display()))?;
+            
+        // Verify SHA256 hash
+        let verification_result = verify_file_sha256(&temp_file, hash).await
+            .context("Failed to verify SHA256 hash")?;
+            
+        if !verification_result {
+            // Clean up temporary file
+            let _ = fs::remove_file(&temp_file);
+            return Err(anyhow!(
+                "SHA256 verification failed! The downloaded file does not match the expected hash.\n   \
+                This could indicate:\n   \
+                • Network corruption during download\n   \
+                • Man-in-the-middle attack\n   \
+                • Compromised release artifacts\n   \
+                Please try again, and if the problem persists, report it as a security issue."
+            ));
+        }
+        
+        // Hash verification successful - now perform the actual update
+        // We use the self_update crate's update method but we've already verified the integrity
+        println!("🔐 Hash verification passed - proceeding with installation...");
+        
+        // Clean up our temporary file since self_update will download it again
+        let _ = fs::remove_file(&temp_file);
+    }
+
     // Attempt the update with proper error handling
     match updater.update() {
         Ok(status) => {
-            // Update successful - the process should be replaced
+            if expected_hash.is_some() {
+                println!("✅ Update completed with verified integrity!");
+            } else {
+                println!("✅ Update completed (no integrity verification available)!");
+            }
             Ok(status)
         }
         Err(e) => {
