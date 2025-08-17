@@ -476,9 +476,9 @@ async fn perform_safe_update(
         // Get the target and construct URLs
         let target = get_target_triple()?;
         let archive_name = if target.contains("windows") {
-        format!("awsomarchy-standard-{}.zip", target)
+            format!("awsomarchy-standard-{}.zip", target)
         } else {
-        format!("awsomarchy-standard-{}.tar.gz", target)
+            format!("awsomarchy-standard-{}.tar.gz", target)
         };
 
         // Get the latest release version
