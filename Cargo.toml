@@ -1,12 +1,12 @@
 [package]
 name = "awesome-omarchy-tui"
-version = "0.3.6"
+version = "0.3.7"
 edition = "2024"
 description = "A beautiful terminal UI for browsing the awesome-omarchy repository with search, navigation, and GitHub integration"
 authors = ["Altynbek Orumbayev <aorumbayev@pm.me>"]
 license = "MIT"
 repository = "https://github.com/aorumbayev/awesome-omarchy-tui"
-keywords = ["tui", "terminal", "cli", "github", "awesome", "omarchy"]
+keywords = ["tui", "terminal", "cli", "github", "omarchy"]
 categories = ["command-line-utilities"]
 
 [dependencies]

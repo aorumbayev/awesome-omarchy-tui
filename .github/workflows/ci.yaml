@@ -82,3 +82,20 @@ jobs:
               run: cargo build --release
             - name: Cache Cargo dependencies
               uses: Swatinem/rust-cache@v2
+
+    validate-crate:
+        name: validate-crate
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+            - name: Cache Cargo dependencies
+              uses: Swatinem/rust-cache@v2
+            - name: Validate crate package
+              run: cargo package --list --allow-dirty
+            - name: Validate publish readiness
+              run: cargo publish --dry-run --allow-dirty

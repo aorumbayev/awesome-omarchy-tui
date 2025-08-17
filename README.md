@@ -12,6 +12,11 @@ Terminal UI for browsing [awesome-omarchy](https://github.com/aorumbayev/awesome
 
 ## Install
 
+**Cargo:**
+```bash
+cargo install awesome-omarchy-tui
+```
+
 **Unix/Linux/macOS:**
 ```bash
 curl -fsSL https://tui.awesome-omarchy.com/install.sh | bash
@@ -29,8 +34,12 @@ iwr https://tui.awesome-omarchy.com/install.ps1 | iex
 ```bash
 awsomarchy           # Launch TUI
 awsomarchy version   # Show version  
-awsomarchy update    # Update to latest
+awsomarchy update    # Update to latest (direct install only)
 ```
+
+**Updates:**
+- Direct install: `awsomarchy update`
+- Cargo install: `cargo install awesome-omarchy-tui`
 
 **Navigation:**
 - `h/l` - Switch sidebar/content
