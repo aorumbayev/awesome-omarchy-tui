@@ -35,7 +35,7 @@ strip = true
 panic = "abort"
 
 [features]
-default = []
+default = ["updater"]
 updater = ["dep:self_update"]
 
 [[bin]]

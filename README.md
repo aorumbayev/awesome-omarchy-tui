@@ -1,6 +1,14 @@
 # awesome-omarchy-tui
 
-Terminal UI for browsing [awesome-omarchy](https://github.com/basecamp/omarchy) repository.
+Terminal UI for browsing [awesome-omarchy](https://github.com/aorumbayev/awesome-omarchy) repository.
+
+## Features
+
+- 🔍 **Full-text search** across repositories and descriptions
+- 🎯 **Interactive navigation** with vim-style keybindings
+- 🚀 **Auto-updates** - always stay on the latest version
+- ⚡ **Lightweight** - ~6MB optimized binary
+- 🌍 **Cross-platform** - Linux, macOS, Windows (x64/ARM64)
 
 ## Install
 
@@ -38,6 +46,8 @@ git clone https://github.com/aorumbayev/awesome-omarchy-tui.git
 cd awesome-omarchy-tui
 cargo build --release
 ```
+
+Binary size: ~6MB (optimized with LTO, stripped)
 
 ## License
 
