@@ -134,7 +134,7 @@ jobs:
               run: |
                   # Test the exact command from README: curl -fsSL https://tui.awesome-omarchy.com/install.sh | bash
                   # Since we can't use the CDN during CI, we'll test the direct GitHub method
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --version ${{ github.ref_name }}
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --version ${{ github.ref_name }}
 
             - name: Verify installation and functionality
               shell: bash
@@ -170,7 +170,9 @@ jobs:
               run: |
                   # Test the exact command from README: iwr https://tui.awesome-omarchy.com/install.ps1 | iex
                   # Since we can't use the CDN during CI, we'll test the direct GitHub method
-                  iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1" | iex
+                  $script = iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1"
+                  $scriptBlock = [ScriptBlock]::Create($script.Content)
+                  & $scriptBlock -Version "${{ github.ref_name }}"
 
             - name: Verify installation and functionality
               shell: pwsh
@@ -299,7 +301,7 @@ jobs:
               run: |
                   # Test installation to a custom directory
                   mkdir -p $HOME/test-install
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --dir $HOME/test-install --version ${{ github.ref_name }}
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --dir $HOME/test-install --version ${{ github.ref_name }}
                   
                   # Verify installation
                   if [ -f "$HOME/test-install/awsomarchy" ]; then
@@ -316,7 +318,7 @@ jobs:
               run: |
                   # Test installation to user-local directory
                   mkdir -p $HOME/.local/bin
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --dir $HOME/.local/bin --version ${{ github.ref_name }}
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --dir $HOME/.local/bin --version ${{ github.ref_name }}
                   
                   # Verify installation
                   if [ -f "$HOME/.local/bin/awsomarchy" ]; then
@@ -335,7 +337,9 @@ jobs:
                   $customDir = "$env:USERPROFILE\test-install"
                   New-Item -Path $customDir -ItemType Directory -Force
                   
-                  iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1" | iex -InstallDir $customDir -Version ${{ github.ref_name }}
+                  $script = iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1"
+                  $scriptBlock = [ScriptBlock]::Create($script.Content)
+                  & $scriptBlock -InstallDir $customDir -Version "${{ github.ref_name }}"
                   
                   # Verify installation
                   $binaryPath = "$customDir\awsomarchy.exe"
@@ -362,7 +366,7 @@ jobs:
               shell: bash
               run: |
                   # Quick installation for functionality testing
-                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --version ${{ github.ref_name }}
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash -s -- --version ${{ github.ref_name }}
                   
                   # Find the binary
                   BINARY_PATH=""
@@ -391,7 +395,9 @@ jobs:
               shell: pwsh
               run: |
                   # Quick installation for functionality testing  
-                  iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1" | iex -Version ${{ github.ref_name }}
+                  $script = iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1"
+                  $scriptBlock = [ScriptBlock]::Create($script.Content)
+                  & $scriptBlock -Version "${{ github.ref_name }}"
                   
                   # Find the binary
                   $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"

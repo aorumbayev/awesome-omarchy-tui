@@ -103,7 +103,9 @@ function Test-BinaryAvailability {
         Write-Info "Verifying binary and hash file availability..."
         
         $binaryResponse = Invoke-WebRequest -Uri $BinaryUrl -Method Head -UseBasicParsing
-        $binarySize = [math]::Round([int]$binaryResponse.Headers.'Content-Length' / 1MB, 1)
+        $contentLength = $binaryResponse.Headers.'Content-Length'
+        if ($contentLength -is [array]) { $contentLength = $contentLength[0] }
+        $binarySize = [math]::Round([int]$contentLength / 1MB, 1)
         Write-Success "✅ Binary verified ($binarySize MB)"
         
         # Check SHA256 file availability
