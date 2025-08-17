@@ -229,14 +229,14 @@ if (-not $Version) {
         if (-not $Version) {
             Write-Error-Exit "Failed to determine latest version" "Network"
         }
-
-        # Remove 'v' prefix if present
-        $Version = $Version -replace '^v', ''
     }
     catch {
         Write-Error-Exit "Failed to fetch latest version information. $($_.Exception.Message)" "Network"
     }
 }
+
+# Remove 'v' prefix if present (normalize version for both API and parameter input)
+$Version = $Version -replace '^v', ''
 
 Write-Info "Installing awsomarchy $Version for $arch-$os..."
 
