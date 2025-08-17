@@ -1,6 +1,6 @@
 [package]
 name = "awesome-omarchy-tui"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 description = "A beautiful terminal UI for browsing the awesome-omarchy repository with search, navigation, and GitHub integration"
 authors = ["Altynbek Orumbayev <aorumbayev@pm.me>"]

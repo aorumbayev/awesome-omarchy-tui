@@ -80,7 +80,8 @@ jobs:
                   checksum: sha256
                   token: ${{ secrets.GITHUB_TOKEN }}
 
-    test-installation:
+    # Direct binary download and installation testing (existing method)
+    test-binary-installation:
         needs: upload-assets
         continue-on-error: true
         strategy:
@@ -94,7 +95,7 @@ jobs:
                       target: x86_64-pc-windows-msvc
         runs-on: ${{ matrix.os }}
         steps:
-            - name: Test installation on Linux/macOS
+            - name: Test direct binary installation on Linux/macOS
               if: matrix.os != 'windows-latest'
               shell: bash
               run: |
@@ -105,7 +106,7 @@ jobs:
                   tar xzf ${{ env.BINARY_NAME }}.tar.gz
                   ./${{ env.BINARY_NAME }} help
 
-            - name: Test installation on Windows
+            - name: Test direct binary installation on Windows
               if: matrix.os == 'windows-latest'
               shell: pwsh
               run: |
@@ -115,3 +116,298 @@ jobs:
                   Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/${VERSION}/${{ env.BINARY_NAME }}-${{ matrix.target }}.zip" -OutFile "${{ env.BINARY_NAME }}.zip"
                   Expand-Archive -Path "${{ env.BINARY_NAME }}.zip" -DestinationPath "."
                   .\${{ env.BINARY_NAME }}.exe help
+
+    # Test installation via curl piped command (as documented in README)
+    test-curl-piped-installation:
+        needs: upload-assets
+        continue-on-error: true
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macos-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - name: Wait for release assets to be available
+              run: sleep 30
+
+            - name: Test curl piped installation (README method)
+              shell: bash
+              run: |
+                  # Test the exact command from README: curl -fsSL https://tui.awesome-omarchy.com/install.sh | bash
+                  # Since we can't use the CDN during CI, we'll test the direct GitHub method
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --version ${{ github.ref_name }}
+
+            - name: Verify installation and functionality
+              shell: bash
+              run: |
+                  # Verify the binary was installed and is functional
+                  which awsomarchy || echo "Binary not found in PATH, checking common locations..."
+                  
+                  # Check common installation locations
+                  if [ -f "/usr/local/bin/awsomarchy" ]; then
+                      /usr/local/bin/awsomarchy help
+                  elif [ -f "$HOME/.local/bin/awsomarchy" ]; then
+                      $HOME/.local/bin/awsomarchy help
+                  elif [ -f "$HOME/bin/awsomarchy" ]; then
+                      $HOME/bin/awsomarchy help
+                  elif command -v awsomarchy >/dev/null 2>&1; then
+                      awsomarchy help
+                  else
+                      echo "Binary not found after installation!"
+                      exit 1
+                  fi
+
+    # Test installation via PowerShell piped command (as documented in README)  
+    test-powershell-piped-installation:
+        needs: upload-assets
+        continue-on-error: true
+        runs-on: windows-latest
+        steps:
+            - name: Wait for release assets to be available
+              run: Start-Sleep -Seconds 30
+
+            - name: Test PowerShell piped installation (README method)
+              shell: pwsh
+              run: |
+                  # Test the exact command from README: iwr https://tui.awesome-omarchy.com/install.ps1 | iex
+                  # Since we can't use the CDN during CI, we'll test the direct GitHub method
+                  iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1" | iex
+
+            - name: Verify installation and functionality
+              shell: pwsh
+              run: |
+                  # Verify the binary was installed and is functional
+                  $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"
+                  if (Test-Path $binaryPath) {
+                      & $binaryPath help
+                      Write-Host "✅ PowerShell piped installation successful!"
+                  }
+                  elseif (Get-Command awsomarchy -ErrorAction SilentlyContinue) {
+                      awsomarchy help
+                      Write-Host "✅ PowerShell piped installation successful (found in PATH)!"
+                  }
+                  else {
+                      Write-Error "❌ Binary not found after PowerShell piped installation!"
+                      exit 1
+                  }
+
+    # Test installation via direct script download and execution
+    test-script-installation:
+        needs: upload-assets
+        continue-on-error: true
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      script: install.sh
+                      shell: bash
+                    - os: macos-latest  
+                      script: install.sh
+                      shell: bash
+                    - os: windows-latest
+                      script: install.ps1
+                      shell: pwsh
+        runs-on: ${{ matrix.os }}
+        steps:
+            - name: Wait for release assets to be available
+              shell: bash
+              run: sleep 30
+
+            - name: Download installation script
+              shell: bash
+              run: |
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/${{ matrix.script }} -o ${{ matrix.script }}
+                  ls -la ${{ matrix.script }}
+
+            - name: Execute installation script (Unix/Linux/macOS)
+              if: matrix.shell == 'bash'
+              shell: bash
+              run: |
+                  chmod +x ${{ matrix.script }}
+                  ./${{ matrix.script }} --version ${{ github.ref_name }}
+
+            - name: Execute installation script (Windows)
+              if: matrix.shell == 'pwsh'
+              shell: pwsh
+              run: |
+                  .\${{ matrix.script }} -Version ${{ github.ref_name }}
+
+            - name: Verify script installation and functionality (Unix/Linux/macOS)
+              if: matrix.shell == 'bash'
+              shell: bash
+              run: |
+                  # Verify the binary was installed and is functional
+                  if [ -f "/usr/local/bin/awsomarchy" ]; then
+                      /usr/local/bin/awsomarchy help
+                      echo "✅ Script installation successful!"
+                  elif [ -f "$HOME/.local/bin/awsomarchy" ]; then
+                      $HOME/.local/bin/awsomarchy help
+                      echo "✅ Script installation successful!"
+                  elif [ -f "$HOME/bin/awsomarchy" ]; then
+                      $HOME/bin/awsomarchy help
+                      echo "✅ Script installation successful!"
+                  elif command -v awsomarchy >/dev/null 2>&1; then
+                      awsomarchy help
+                      echo "✅ Script installation successful!"
+                  else
+                      echo "❌ Binary not found after script installation!"
+                      exit 1
+                  fi
+
+            - name: Verify script installation and functionality (Windows)
+              if: matrix.shell == 'pwsh'
+              shell: pwsh
+              run: |
+                  # Verify the binary was installed and is functional  
+                  $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"
+                  if (Test-Path $binaryPath) {
+                      & $binaryPath help
+                      Write-Host "✅ Script installation successful!"
+                  }
+                  elseif (Get-Command awsomarchy -ErrorAction SilentlyContinue) {
+                      awsomarchy help
+                      Write-Host "✅ Script installation successful (found in PATH)!"
+                  }
+                  else {
+                      Write-Error "❌ Binary not found after script installation!"
+                      exit 1
+                  }
+
+    # Test advanced installation scenarios and edge cases
+    test-advanced-installation:
+        needs: upload-assets
+        continue-on-error: true
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      test_type: "custom_dir"
+                      description: "Custom directory installation"
+                    - os: macos-latest
+                      test_type: "user_local" 
+                      description: "User-local installation"
+                    - os: windows-latest
+                      test_type: "custom_dir"
+                      description: "Custom directory installation"
+        runs-on: ${{ matrix.os }}
+        steps:
+            - name: Wait for release assets to be available
+              run: sleep 30
+
+            - name: Test custom directory installation (Unix/Linux/macOS)
+              if: matrix.test_type == 'custom_dir' && runner.os != 'Windows'
+              shell: bash
+              run: |
+                  # Test installation to a custom directory
+                  mkdir -p $HOME/test-install
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --dir $HOME/test-install --version ${{ github.ref_name }}
+                  
+                  # Verify installation
+                  if [ -f "$HOME/test-install/awsomarchy" ]; then
+                      $HOME/test-install/awsomarchy help
+                      echo "✅ Custom directory installation successful!"
+                  else
+                      echo "❌ Custom directory installation failed!"
+                      exit 1
+                  fi
+
+            - name: Test user-local installation (macOS)
+              if: matrix.test_type == 'user_local'
+              shell: bash
+              run: |
+                  # Test installation to user-local directory
+                  mkdir -p $HOME/.local/bin
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --dir $HOME/.local/bin --version ${{ github.ref_name }}
+                  
+                  # Verify installation
+                  if [ -f "$HOME/.local/bin/awsomarchy" ]; then
+                      $HOME/.local/bin/awsomarchy help
+                      echo "✅ User-local installation successful!"
+                  else
+                      echo "❌ User-local installation failed!"
+                      exit 1
+                  fi
+
+            - name: Test custom directory installation (Windows)
+              if: matrix.test_type == 'custom_dir' && runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  # Test installation to a custom directory
+                  $customDir = "$env:USERPROFILE\test-install"
+                  New-Item -Path $customDir -ItemType Directory -Force
+                  
+                  iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1" | iex -InstallDir $customDir -Version ${{ github.ref_name }}
+                  
+                  # Verify installation
+                  $binaryPath = "$customDir\awsomarchy.exe"
+                  if (Test-Path $binaryPath) {
+                      & $binaryPath help
+                      Write-Host "✅ Custom directory installation successful!"
+                  }
+                  else {
+                      Write-Error "❌ Custom directory installation failed!"
+                      exit 1
+                  }
+
+    # Comprehensive functionality test across all installation methods
+    test-installation-functionality:
+        needs: [test-binary-installation, test-curl-piped-installation, test-powershell-piped-installation, test-script-installation, test-advanced-installation]
+        continue-on-error: true
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - name: Download and test basic functionality (Unix/Linux/macOS)
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  # Quick installation for functionality testing
+                  curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.sh | bash --version ${{ github.ref_name }}
+                  
+                  # Find the binary
+                  BINARY_PATH=""
+                  if [ -f "/usr/local/bin/awsomarchy" ]; then
+                      BINARY_PATH="/usr/local/bin/awsomarchy"
+                  elif [ -f "$HOME/.local/bin/awsomarchy" ]; then
+                      BINARY_PATH="$HOME/.local/bin/awsomarchy"
+                  elif [ -f "$HOME/bin/awsomarchy" ]; then
+                      BINARY_PATH="$HOME/bin/awsomarchy"
+                  elif command -v awsomarchy >/dev/null 2>&1; then
+                      BINARY_PATH="awsomarchy"
+                  fi
+                  
+                  if [ -n "$BINARY_PATH" ]; then
+                      echo "Testing functionality with binary at: $BINARY_PATH"
+                      $BINARY_PATH help
+                      $BINARY_PATH version
+                      echo "✅ All functionality tests passed!"
+                  else
+                      echo "❌ Binary not found for functionality testing!"
+                      exit 1
+                  fi
+
+            - name: Download and test basic functionality (Windows)
+              if: runner.os == 'Windows'
+              shell: pwsh
+              run: |
+                  # Quick installation for functionality testing  
+                  iwr "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/install.ps1" | iex -Version ${{ github.ref_name }}
+                  
+                  # Find the binary
+                  $binaryPath = "$env:LOCALAPPDATA\Programs\awsomarchy\awsomarchy.exe"
+                  if (Test-Path $binaryPath) {
+                      Write-Host "Testing functionality with binary at: $binaryPath"
+                      & $binaryPath help
+                      & $binaryPath version
+                      Write-Host "✅ All functionality tests passed!"
+                  }
+                  elseif (Get-Command awsomarchy -ErrorAction SilentlyContinue) {
+                      Write-Host "Testing functionality with binary in PATH"
+                      awsomarchy help
+                      awsomarchy version  
+                      Write-Host "✅ All functionality tests passed!"
+                  }
+                  else {
+                      Write-Error "❌ Binary not found for functionality testing!"
+                      exit 1
+                  }
