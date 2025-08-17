@@ -39,5 +39,5 @@ default = []
 updater = ["dep:self_update"]
 
 [[bin]]
-name = "awsmomarchy"
+name = "awsomarchy"
 path = "src/main.rs"

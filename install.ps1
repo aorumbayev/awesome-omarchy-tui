@@ -1,21 +1,21 @@
-# awsmomarchy Installer for Windows
-# This script installs awsmomarchy on your Windows system
+# awsomarchy Installer for Windows
+# This script installs awsomarchy on your Windows system
 
 # Parameters
 param(
     [string]$Version = "",
-    [string]$InstallDir = "$env:LOCALAPPDATA\Programs\awsmomarchy",
+    [string]$InstallDir = "$env:LOCALAPPDATA\Programs\awsomarchy",
     [switch]$Help
 )
 
 # Help information
 if ($Help) {
     Write-Host "Usage: .\install.ps1 [-Version <version>] [-InstallDir <directory>] [-Help]"
-    Write-Host "Install awsmomarchy on your Windows system."
+    Write-Host "Install awsomarchy on your Windows system."
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -Version <version>     Specify version to install (defaults to latest)"
-    Write-Host "  -InstallDir <dir>      Installation directory (default: $env:LOCALAPPDATA\Programs\awsmomarchy)"
+    Write-Host "  -InstallDir <dir>      Installation directory (default: $env:LOCALAPPDATA\Programs\awsomarchy)"
     Write-Host "  -Help                  Display this help and exit"
     exit 0
 }
@@ -84,10 +84,10 @@ if (-not $Version) {
     }
 }
 
-Write-Info "Installing awsmomarchy $Version for $arch-$os..."
+Write-Info "Installing awsomarchy $Version for $arch-$os..."
 
 # Construct package name and download URL
-$binaryName = "awsmomarchy"
+$binaryName = "awsomarchy"
 $pkgName = "$binaryName-$arch-$os.zip"
 $downloadUrl = "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$Version/$pkgName"
 

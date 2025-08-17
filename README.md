@@ -19,9 +19,9 @@ iwr https://raw.githubusercontent.com/aorumbayev/awesome-omarchy-tui/main/instal
 ## Usage
 
 ```bash
-awsmomarchy           # Launch TUI
-awsmomarchy version   # Show version  
-awsmomarchy update    # Update to latest
+awsomarchy           # Launch TUI
+awsomarchy version   # Show version  
+awsomarchy update    # Update to latest
 ```
 
 **Navigation:**

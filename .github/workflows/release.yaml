@@ -12,7 +12,7 @@ env:
     CARGO_TERM_COLOR: always
     RUST_BACKTRACE: 1
     # Default binary name
-    BINARY_NAME: awsmomarchy
+    BINARY_NAME: awsomarchy
 
 jobs:
     create-release:

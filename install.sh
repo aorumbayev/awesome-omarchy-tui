@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# awsmomarchy Installer
-# This script installs awsmomarchy on your system interactively or unattended
+# awsomarchy Installer
+# This script installs awsomarchy on your system interactively or unattended
 
 # Colors (only used in interactive mode)
 GREEN='\033[0;32m'
@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --help)
       echo "Usage: $0 [OPTIONS]"
-      echo "Install awsmomarchy on your system."
+      echo "Install awsomarchy on your system."
       echo
       echo "Options:"
       echo "  --version VERSION    Specify version to install (defaults to latest)"
@@ -102,7 +102,7 @@ if [ "$UNATTENDED" = false ]; then
 
     if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]] && [ -n "$SHELL_CONFIG" ]; then
         print_msg "Adding $INSTALL_DIR to your PATH in $SHELL_CONFIG"
-        echo -e "\n# Added by awsmomarchy Installer\n$PATH_CMD" >> "$SHELL_CONFIG"
+        echo -e "\n# Added by awsomarchy Installer\n$PATH_CMD" >> "$SHELL_CONFIG"
         print_msg "Please run 'source $SHELL_CONFIG' or restart your shell."
         export PATH="$INSTALL_DIR:$PATH" # Add to current session
     fi
@@ -150,10 +150,10 @@ if [ -z "$VERSION" ]; then
 fi
 VERSION=${VERSION#v}
 
-print_msg "Installing awsmomarchy $VERSION for $ARCH-$OS..."
+print_msg "Installing awsomarchy $VERSION for $ARCH-$OS..."
 
 # Construct package name and download URL
-BINARY_NAME="awsmomarchy"
+BINARY_NAME="awsomarchy"
 PKG_NAME="${BINARY_NAME}-${ARCH}-${OS}.tar.gz"
 DOWNLOAD_URL="https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$VERSION/$PKG_NAME"
 

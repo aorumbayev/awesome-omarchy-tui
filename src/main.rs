@@ -45,7 +45,7 @@ const LOGO: &str = r#"
 "#;
 
 #[derive(Parser)]
-#[command(name = "awsmomarchy")]
+#[command(name = "awsomarchy")]
 #[command(version = VERSION, about = "A beautiful terminal UI for browsing the awesome-omarchy repository", long_about = None, disable_version_flag = true, disable_help_flag = true)]
 struct Cli {
     #[command(subcommand)]
@@ -54,7 +54,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Update awsmomarchy to the latest version
+    /// Update awsomarchy to the latest version
     #[cfg(feature = "updater")]
     Update {
         /// Force update even if already on latest version
@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Version) => {
             println!("{}", LOGO);
-            println!("awsmomarchy v{}", VERSION);
+            println!("awsomarchy v{}", VERSION);
             println!("A beautiful terminal UI for browsing the awesome-omarchy repository");
             println!("\nFeatures:");
             println!("• ⚡ Lightning fast with intelligent caching");
@@ -91,11 +91,11 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Help) => {
             println!("{}", LOGO);
-            println!("awsmomarchy v{}", VERSION);
+            println!("awsomarchy v{}", VERSION);
             println!("A beautiful terminal UI for browsing the awesome-omarchy repository\n");
 
             println!("USAGE:");
-            println!("    awsmomarchy [COMMAND]\n");
+            println!("    awsomarchy [COMMAND]\n");
 
             println!("COMMANDS:");
             #[cfg(feature = "updater")]
@@ -179,7 +179,7 @@ async fn perform_update(force: bool) -> Result<()> {
         let status = self_update::backends::github::Update::configure()
             .repo_owner("aorumbayev")
             .repo_name("awesome-omarchy-tui")
-            .bin_name("awsmomarchy")
+            .bin_name("awsomarchy")
             .show_download_progress(true)
             .current_version(current_version)
             .build()?
