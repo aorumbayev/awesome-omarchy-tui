@@ -18,7 +18,7 @@ jobs:
     create-release:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
             - uses: taiki-e/create-gh-release-action@v1
               with:
                   # If you have a changelog file, specify it here
@@ -47,7 +47,7 @@ jobs:
                       os: macos-latest
         runs-on: ${{ matrix.os }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Install Rust toolchain
               uses: dtolnay/rust-toolchain@stable
