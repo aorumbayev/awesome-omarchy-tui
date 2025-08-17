@@ -33,10 +33,20 @@ while [[ $# -gt 0 ]]; do
       echo
       echo "Options:"
       echo "  --version VERSION    Specify version to install (defaults to latest)"
-      echo "  --dir DIR            Installation directory (default: /usr/local/bin)"
+      echo "  --dir DIR            Installation directory (default: auto-detect)"
       echo "  --help               Display this help and exit"
       echo
-      echo "When run without options, the installer runs in interactive mode."
+      echo "Installation Directory Selection:"
+      echo "  The installer automatically finds a writable directory in this order:"
+      echo "  1. /usr/local/bin (system-wide, requires sudo)"
+      echo "  2. \$HOME/.local/bin (user-local, recommended)"
+      echo "  3. \$HOME/bin (user-local, alternative)"
+      echo
+      echo "Examples:"
+      echo "  $0                           # Interactive installation with auto-detection"
+      echo "  $0 --version 1.0.0          # Install specific version"
+      echo "  $0 --dir \$HOME/.local/bin    # Install to specific directory"
+      echo "  sudo $0                     # System-wide installation"
       exit 0
       ;;
     *)
@@ -74,41 +84,90 @@ print_success() {
     fi
 }
 
-# Writable function to check if a directory is writable
+# Function to check if a directory is writable
 is_writable() {
     [ -w "$1" ]
 }
 
-# Determine installation directory (in interactive mode)
-if [ "$UNATTENDED" = false ]; then
-    if ! is_writable "$INSTALL_DIR" && [ -d "$HOME/.local/bin" ]; then
-        INSTALL_DIR="$HOME/.local/bin"
+# Function to find the best writable installation directory
+find_writable_install_dir() {
+    local preferred_dirs=("/usr/local/bin" "$HOME/.local/bin" "$HOME/bin")
+    
+    # If user specified a directory via --dir, try that first
+    if [ "$INSTALL_DIR" != "/usr/local/bin" ]; then
+        preferred_dirs=("$INSTALL_DIR" "${preferred_dirs[@]}")
     fi
+    
+    for dir in "${preferred_dirs[@]}"; do
+        # Create directory if it doesn't exist
+        if mkdir -p "$dir" 2>/dev/null && is_writable "$dir"; then
+            echo "$dir"
+            return 0
+        fi
+    done
+    
+    # If nothing worked, return empty string
+    echo ""
+    return 1
+}
 
-    # Create if it doesn't exist and check writability again
-    mkdir -p "$INSTALL_DIR"
-    if ! is_writable "$INSTALL_DIR"; then
-        error_exit "Cannot write to $INSTALL_DIR. Please ensure the directory exists and you have permissions, or run with sudo. Alternatively, use --dir to specify a writable path."
+# Determine installation directory (works in both interactive and unattended modes)
+CHOSEN_DIR=$(find_writable_install_dir)
+if [ -z "$CHOSEN_DIR" ]; then
+    if [ "$UNATTENDED" = true ]; then
+        error_exit "Cannot find a writable installation directory. Tried:
+  - /usr/local/bin (requires sudo)
+  - \$HOME/.local/bin ($HOME/.local/bin)
+  - \$HOME/bin ($HOME/bin)
+
+To install to a specific directory, use: $0 --dir /path/to/directory
+For user-local installation, try: $0 --dir \$HOME/.local/bin
+To install system-wide, run: sudo $0"
+    else
+        error_exit "Cannot find a writable installation directory. Options:
+  1. Run with sudo for system-wide installation: sudo $0
+  2. Install to user directory: $0 --dir \$HOME/.local/bin
+  3. Create and use custom directory: $0 --dir /path/to/directory
+
+Tried these directories:
+  - /usr/local/bin (requires sudo)
+  - \$HOME/.local/bin ($HOME/.local/bin)
+  - \$HOME/bin ($HOME/bin)"
     fi
+else
+    INSTALL_DIR="$CHOSEN_DIR"
+fi
 
-    # Add to PATH if needed (using a more robust check)
+# Handle PATH updates for both interactive and unattended modes
+if [ "$INSTALL_DIR" != "/usr/local/bin" ]; then
+    # Only handle PATH for user directories
     PATH_CMD="export PATH=\"$INSTALL_DIR:\$PATH\""
     SHELL_CONFIG=""
+    
+    # Determine shell config file
     if [ -n "$BASH_VERSION" ]; then
         SHELL_CONFIG="$HOME/.bashrc"
     elif [ -n "$ZSH_VERSION" ]; then
         SHELL_CONFIG="$HOME/.zshrc"
+    elif [ -n "$BASH" ]; then
+        SHELL_CONFIG="$HOME/.bashrc"
+    elif [ -n "$ZSH_NAME" ]; then
+        SHELL_CONFIG="$HOME/.zshrc"
     fi
-
+    
+    # Check if PATH update is needed
     if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]] && [ -n "$SHELL_CONFIG" ]; then
-        print_msg "Adding $INSTALL_DIR to your PATH in $SHELL_CONFIG"
-        echo -e "\n# Added by awsomarchy Installer\n$PATH_CMD" >> "$SHELL_CONFIG"
-        print_msg "Please run 'source $SHELL_CONFIG' or restart your shell."
+        if [ "$UNATTENDED" = true ]; then
+            print_msg "Adding $INSTALL_DIR to PATH in $SHELL_CONFIG"
+            echo -e "\n# Added by awsomarchy installer\n$PATH_CMD" >> "$SHELL_CONFIG"
+            print_msg "Restart your shell or run: source $SHELL_CONFIG"
+        else
+            print_msg "Adding $INSTALL_DIR to your PATH in $SHELL_CONFIG"
+            echo -e "\n# Added by awsomarchy installer\n$PATH_CMD" >> "$SHELL_CONFIG"
+            print_msg "Please run 'source $SHELL_CONFIG' or restart your shell."
+        fi
         export PATH="$INSTALL_DIR:$PATH" # Add to current session
     fi
-else
-    # In unattended mode, just ensure the directory exists
-    mkdir -p "$INSTALL_DIR"
 fi
 
 # Detect architecture
