@@ -107,6 +107,7 @@ jobs:
           checksum: sha256
           archive: $bin-aur-$target
           no-default-features: true
+          features: aur-theme-preview
           token: ${{ secrets.GITHUB_TOKEN }}
 
   test-installation:

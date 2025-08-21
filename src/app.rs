@@ -1,6 +1,11 @@
+#[cfg(feature = "aur-theme-preview")]
+use crate::models::ThemeEntry;
 use crate::{
     HttpClient,
-    models::{AppState, FocusArea, ListState, ReadmeContent, SearchResult, TabState},
+    models::{
+        AppState, FocusArea, ListState, PreviewState, ReadmeContent, SearchResult, TabState,
+        ThemeApplicator, ThemeBrowserState,
+    },
 };
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -17,6 +22,12 @@ pub struct App {
     pub quit: bool,
     pub client: HttpClient,
     pub focus_area: FocusArea,
+    pub theme_browser: ThemeBrowserState,
+    pub theme_browser_mode: bool,
+    pub theme_applicator: ThemeApplicator,
+    pub preview_state: PreviewState,
+    #[cfg(feature = "aur-theme-preview")]
+    pub theme_entries: Vec<ThemeEntry>,
 }
 
 impl App {
@@ -33,6 +44,22 @@ impl App {
             quit: false,
             client,
             focus_area: FocusArea::default(),
+            theme_browser: ThemeBrowserState {
+                themes: Vec::new(),
+                selected_index: None,
+                loading: false,
+                error: None,
+                preview_theme: None,
+                search_mode: false,
+                search_query: String::new(),
+                filtered_themes: Vec::new(),
+                filtered_selected: None,
+            },
+            theme_browser_mode: false,
+            theme_applicator: ThemeApplicator::default(),
+            preview_state: PreviewState::default(),
+            #[cfg(feature = "aur-theme-preview")]
+            theme_entries: Vec::new(),
         };
 
         app.load_readme(false).await?;
@@ -87,7 +114,9 @@ impl App {
     }
 
     pub async fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
-        if self.search_mode {
+        if self.theme_browser_mode {
+            self.handle_theme_browser_input(key).await?;
+        } else if self.search_mode {
             self.handle_search_input(key).await?;
         } else {
             self.handle_normal_input(key).await?;
@@ -121,8 +150,7 @@ impl App {
                 if !self.search_results.is_empty() {
                     self.search_selection = Some(match self.search_selection {
                         Some(idx) if idx + 1 < self.search_results.len() => idx + 1,
-                        Some(_) => 0, // Wrap to beginning
-                        None => 0,
+                        Some(_) | None => 0, // Wrap to beginning
                     });
                 }
             }
@@ -131,8 +159,7 @@ impl App {
                 if !self.search_results.is_empty() {
                     self.search_selection = Some(match self.search_selection {
                         Some(idx) if idx > 0 => idx - 1,
-                        Some(_) => self.search_results.len() - 1, // Wrap to end
-                        None => self.search_results.len() - 1,
+                        Some(_) | None => self.search_results.len() - 1, // Wrap to end
                     });
                 }
             }
@@ -193,11 +220,11 @@ impl App {
                 }
             },
             // Reload
-            KeyCode::Char('r') | KeyCode::Char('R') => {
+            KeyCode::Char('r' | 'R') => {
                 self.load_readme(true).await?;
             }
             // Open GitHub
-            KeyCode::Char('g') | KeyCode::Char('G') => {
+            KeyCode::Char('g' | 'G') => {
                 self.open_github_repo();
             }
             // Search
@@ -210,6 +237,10 @@ impl App {
                 self.search_mode = true;
                 self.search_query.clear();
                 self.search_results.clear();
+            }
+            // Theme Browser
+            KeyCode::Char('p' | 'P') => {
+                self.open_theme_browser().await?;
             }
             // Legacy scroll support (for paragraph fallback)
             KeyCode::PageUp => {
@@ -242,7 +273,7 @@ impl App {
                 }
             },
             // Quit
-            KeyCode::Char('q') | KeyCode::Char('Q') => {
+            KeyCode::Char('q' | 'Q') => {
                 self.quit = true;
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -340,19 +371,16 @@ impl App {
     }
 
     pub fn perform_search(&mut self) {
-        if let Some(ref readme) = self.readme_content {
-            if !self.search_query.trim().is_empty() {
-                self.search_results = readme.search_index.search(&self.search_query);
-                // Reset selection when performing new search
-                self.search_selection = if self.search_results.is_empty() {
-                    None
-                } else {
-                    Some(0)
-                };
-            } else {
-                self.search_results.clear();
-                self.search_selection = None;
-            }
+        let Some(ref readme) = self.readme_content else {
+            return;
+        };
+
+        if self.search_query.trim().is_empty() {
+            self.search_results.clear();
+            self.search_selection = None;
+        } else {
+            self.search_results = readme.search_index.search(&self.search_query);
+            self.search_selection = (!self.search_results.is_empty()).then_some(0);
         }
     }
 
@@ -394,15 +422,6 @@ impl App {
         self.tabs.get(self.current_tab)
     }
 
-    pub fn get_current_list_state(&mut self) -> Option<&mut crate::models::ListState> {
-        // Ensure we get the list state for the current tab
-        if self.current_tab < self.tabs.len() {
-            Some(&mut self.tabs[self.current_tab].list_state)
-        } else {
-            None
-        }
-    }
-
     pub fn get_metadata_summary(&self) -> Option<String> {
         self.readme_content.as_ref().map(|readme| {
             format!(
@@ -411,5 +430,378 @@ impl App {
                 readme.metadata.total_entries
             )
         })
+    }
+
+    // Theme browser methods
+    #[cfg(feature = "aur-theme-preview")]
+    pub async fn open_theme_browser(&mut self) -> Result<()> {
+        self.theme_browser_mode = true;
+        self.theme_browser.loading = true;
+        self.theme_browser.error = None;
+
+        // Load theme entries from README if not already loaded
+        if self.theme_entries.is_empty() {
+            match self.client.fetch_themes_from_readme().await {
+                Ok(entries) => {
+                    self.theme_entries = entries;
+                    // Convert to display format for the browser
+                    self.theme_browser.themes = self
+                        .theme_entries
+                        .iter()
+                        .map(|entry| {
+                            use crate::models::{Theme, ThemeColorPalette, ThemeColors};
+                            Theme {
+                                name: entry.name.clone(),
+                                description: entry.description.clone(),
+                                source_url: entry.url.clone(),
+                                // Placeholder colors - will be loaded lazily
+                                colors: ThemeColors {
+                                    background: "#000000".to_string(),
+                                    foreground: "#ffffff".to_string(),
+                                    normal: ThemeColorPalette {
+                                        black: "#000000".to_string(),
+                                        red: "#ff0000".to_string(),
+                                        green: "#00ff00".to_string(),
+                                        yellow: "#ffff00".to_string(),
+                                        blue: "#0000ff".to_string(),
+                                        magenta: "#ff00ff".to_string(),
+                                        cyan: "#00ffff".to_string(),
+                                        white: "#ffffff".to_string(),
+                                    },
+                                    bright: ThemeColorPalette {
+                                        black: "#666666".to_string(),
+                                        red: "#ff6666".to_string(),
+                                        green: "#66ff66".to_string(),
+                                        yellow: "#ffff66".to_string(),
+                                        blue: "#6666ff".to_string(),
+                                        magenta: "#ff66ff".to_string(),
+                                        cyan: "#66ffff".to_string(),
+                                        white: "#ffffff".to_string(),
+                                    },
+                                },
+                            }
+                        })
+                        .collect();
+
+                    self.theme_browser.selected_index = if !self.theme_browser.themes.is_empty() {
+                        Some(0)
+                    } else {
+                        None
+                    };
+
+                    // Initialize filtered themes (empty = show all)
+                    self.theme_browser.filtered_themes.clear();
+                    self.theme_browser.filtered_selected = None;
+                }
+                Err(e) => {
+                    self.theme_browser.error = Some(format!("Failed to load themes: {}", e));
+                }
+            }
+        } else if self.theme_browser.selected_index.is_none()
+            && !self.theme_browser.themes.is_empty()
+        {
+            self.theme_browser.selected_index = Some(0);
+            // Initialize filtered themes (empty = show all)
+            self.theme_browser.filtered_themes.clear();
+            self.theme_browser.filtered_selected = None;
+        }
+
+        self.theme_browser.loading = false;
+        Ok(())
+    }
+
+    /// Legacy theme browser for non-AUR builds
+    #[cfg(not(feature = "aur-theme-preview"))]
+    pub async fn open_theme_browser(&mut self) -> Result<()> {
+        self.theme_browser_mode = true;
+        self.theme_browser.loading = true;
+        self.theme_browser.error = None;
+
+        // Load themes if not already loaded
+        if self.theme_browser.themes.is_empty() {
+            match self.client.fetch_themes().await {
+                Ok(themes) => {
+                    self.theme_browser.themes = themes;
+                    self.theme_browser.selected_index = if !self.theme_browser.themes.is_empty() {
+                        Some(0)
+                    } else {
+                        None
+                    };
+
+                    // Initialize filtered themes (empty = show all)
+                    self.theme_browser.filtered_themes.clear();
+                    self.theme_browser.filtered_selected = None;
+                }
+                Err(e) => {
+                    self.theme_browser.error = Some(format!("Failed to load themes: {e}"));
+                }
+            }
+        } else if self.theme_browser.selected_index.is_none()
+            && !self.theme_browser.themes.is_empty()
+        {
+            self.theme_browser.selected_index = Some(0);
+            // Initialize filtered themes (empty = show all)
+            self.theme_browser.filtered_themes.clear();
+            self.theme_browser.filtered_selected = None;
+        }
+
+        self.theme_browser.loading = false;
+        Ok(())
+    }
+
+    pub fn close_theme_browser(&mut self) {
+        self.theme_browser_mode = false;
+        self.theme_browser.preview_theme = None;
+        self.theme_browser.search_mode = false;
+        self.theme_browser.search_query.clear();
+        self.theme_browser.filtered_themes.clear();
+        self.theme_browser.filtered_selected = None;
+        self.preview_state = PreviewState::None;
+
+        // Complete theme restoration
+        self.theme_applicator.clear_theme();
+    }
+
+    #[cfg(feature = "aur-theme-preview")]
+    async fn load_and_apply_theme(&mut self, theme_entry: &ThemeEntry) -> Result<()> {
+        // Set loading state
+        self.preview_state = PreviewState::Loading;
+
+        // Load theme colors lazily
+        match self.client.fetch_theme_colors(theme_entry).await {
+            Ok(theme) => {
+                // Apply theme globally
+                self.theme_applicator.apply_theme(theme.clone());
+                self.preview_state = PreviewState::Applied(Box::new(theme.clone()));
+                self.theme_browser.preview_theme = Some(theme);
+            }
+            Err(_) => {
+                self.preview_state = PreviewState::Error;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_theme_browser_input(&mut self, key: KeyEvent) -> Result<()> {
+        use crossterm::event::KeyModifiers;
+
+        if self.theme_browser.search_mode {
+            self.handle_theme_search_input(key).await
+        } else {
+            match key.code {
+                KeyCode::Esc => {
+                    self.close_theme_browser();
+                }
+                KeyCode::Char('/') => {
+                    // Enter search mode
+                    self.theme_browser.search_mode = true;
+                    self.theme_browser.search_query.clear();
+                    self.update_theme_search_filter();
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.theme_browser_navigate_next();
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.theme_browser_navigate_previous();
+                }
+                KeyCode::Enter => {
+                    self.theme_browser_apply_selected().await?;
+                }
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.quit = true;
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
+
+    async fn handle_theme_search_input(&mut self, key: KeyEvent) -> Result<()> {
+        use crossterm::event::KeyModifiers;
+
+        match key.code {
+            KeyCode::Esc => {
+                // Clear search and return to normal browse mode
+                self.theme_browser.search_mode = false;
+                self.theme_browser.search_query.clear();
+                self.theme_browser.filtered_themes.clear();
+                self.theme_browser.filtered_selected = None;
+                self.update_theme_search_filter();
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.theme_search_navigate_next();
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.theme_search_navigate_previous();
+            }
+            KeyCode::Enter => {
+                self.theme_browser_apply_selected().await?;
+            }
+            KeyCode::Backspace => {
+                self.theme_browser.search_query.pop();
+                self.update_theme_search_filter();
+            }
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.quit = true;
+            }
+            KeyCode::Char(c) => {
+                self.theme_browser.search_query.push(c);
+                self.update_theme_search_filter();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn update_theme_search_filter(&mut self) {
+        if self.theme_browser.search_query.trim().is_empty() {
+            // No search query - show all themes
+            self.theme_browser.filtered_themes.clear();
+            self.theme_browser.filtered_selected = None;
+        } else {
+            // Filter themes by name (case-insensitive)
+            let query = self.theme_browser.search_query.to_lowercase();
+
+            #[cfg(feature = "aur-theme-preview")]
+            {
+                self.theme_browser.filtered_themes = self
+                    .theme_entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| entry.name.to_lowercase().contains(&query))
+                    .map(|(i, _)| i)
+                    .collect();
+            }
+
+            #[cfg(not(feature = "aur-theme-preview"))]
+            {
+                self.theme_browser.filtered_themes = self
+                    .theme_browser
+                    .themes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, theme)| theme.name.to_lowercase().contains(&query))
+                    .map(|(i, _)| i)
+                    .collect();
+            }
+
+            // Set selection to first result if we have any
+            self.theme_browser.filtered_selected = if self.theme_browser.filtered_themes.is_empty()
+            {
+                None
+            } else {
+                Some(0)
+            };
+        }
+    }
+
+    fn theme_browser_navigate_next(&mut self) {
+        #[cfg(feature = "aur-theme-preview")]
+        {
+            if !self.theme_entries.is_empty() {
+                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
+                    Some(idx) if idx + 1 < self.theme_entries.len() => idx + 1,
+                    Some(_) => 0, // Wrap to beginning
+                    None => 0,
+                });
+            }
+        }
+        #[cfg(not(feature = "aur-theme-preview"))]
+        {
+            if !self.theme_browser.themes.is_empty() {
+                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
+                    Some(idx) if idx + 1 < self.theme_browser.themes.len() => idx + 1,
+                    Some(_) => 0, // Wrap to beginning
+                    None => 0,
+                });
+            }
+        }
+    }
+
+    fn theme_browser_navigate_previous(&mut self) {
+        #[cfg(feature = "aur-theme-preview")]
+        {
+            if !self.theme_entries.is_empty() {
+                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
+                    Some(idx) if idx > 0 => idx - 1,
+                    Some(_) => self.theme_entries.len() - 1, // Wrap to end
+                    None => self.theme_entries.len() - 1,
+                });
+            }
+        }
+        #[cfg(not(feature = "aur-theme-preview"))]
+        {
+            if !self.theme_browser.themes.is_empty() {
+                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
+                    Some(idx) if idx > 0 => idx - 1,
+                    Some(_) => self.theme_browser.themes.len() - 1, // Wrap to end
+                    None => self.theme_browser.themes.len() - 1,
+                });
+            }
+        }
+    }
+
+    fn theme_search_navigate_next(&mut self) {
+        if !self.theme_browser.filtered_themes.is_empty() {
+            self.theme_browser.filtered_selected =
+                Some(match self.theme_browser.filtered_selected {
+                    Some(idx) if idx + 1 < self.theme_browser.filtered_themes.len() => idx + 1,
+                    Some(_) => 0, // Wrap to beginning
+                    None => 0,
+                });
+        }
+    }
+
+    fn theme_search_navigate_previous(&mut self) {
+        if !self.theme_browser.filtered_themes.is_empty() {
+            self.theme_browser.filtered_selected =
+                Some(match self.theme_browser.filtered_selected {
+                    Some(idx) if idx > 0 => idx - 1,
+                    Some(_) => self.theme_browser.filtered_themes.len() - 1, // Wrap to end
+                    None => self.theme_browser.filtered_themes.len() - 1,
+                });
+        }
+    }
+
+    async fn theme_browser_apply_selected(&mut self) -> Result<()> {
+        let selected_theme_index =
+            if self.theme_browser.search_mode && !self.theme_browser.filtered_themes.is_empty() {
+                // In search mode - get the actual theme index from filtered results
+                if let Some(filtered_idx) = self.theme_browser.filtered_selected {
+                    self.theme_browser
+                        .filtered_themes
+                        .get(filtered_idx)
+                        .copied()
+                } else {
+                    None
+                }
+            } else {
+                // Normal mode - use direct selection
+                self.theme_browser.selected_index
+            };
+
+        if let Some(theme_idx) = selected_theme_index {
+            #[cfg(feature = "aur-theme-preview")]
+            {
+                if let Some(theme_entry) = self.theme_entries.get(theme_idx).cloned() {
+                    self.load_and_apply_theme(&theme_entry).await?;
+                }
+            }
+            #[cfg(not(feature = "aur-theme-preview"))]
+            {
+                if let Some(theme) = self.theme_browser.themes.get(theme_idx) {
+                    self.theme_browser.preview_theme = Some(theme.clone());
+                    self.theme_applicator.apply_theme(theme.clone());
+                    self.preview_state = PreviewState::Applied(Box::new(theme.clone()));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Check if a theme is currently applied
+    pub fn is_theme_applied(&self) -> bool {
+        self.theme_applicator.is_applied
     }
 }
