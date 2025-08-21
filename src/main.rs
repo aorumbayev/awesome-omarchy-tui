@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Some(Commands::Version) => {
-            println!("awsomarchy v{}", VERSION);
+            println!("awsomarchy v{VERSION}");
             println!("A TUI for browsing awesome-omarchy repository");
             println!("\nFeatures:");
             println!("• ⚡ Lightning fast with intelligent caching");
@@ -100,7 +100,7 @@ async fn run_tui() -> Result<()> {
     terminal.show_cursor()?;
 
     if let Err(err) = result {
-        eprintln!("Error: {:?}", err);
+        eprintln!("Error: {err:?}");
     }
 
     Ok(())
@@ -124,7 +124,7 @@ async fn perform_update(force: bool) -> Result<()> {
         Ok(releases) => releases,
         Err(e) => {
             println!("❌ Failed to fetch release information from GitHub");
-            println!("   Error: {}", e);
+            println!("   Error: {e}");
             println!("   Please check your internet connection or try again later.");
             return Err(anyhow!("Unable to check for updates: {}", e));
         }
@@ -134,21 +134,18 @@ async fn perform_update(force: bool) -> Result<()> {
         let latest_version = latest_release.version.trim_start_matches('v');
 
         if !force && current_version == latest_version {
-            println!("✅ Already on the latest version: {}", current_version);
+            println!("✅ Already on the latest version: {current_version}");
             return Ok(());
         }
 
-        println!(
-            "📦 Found new version: {} (current: {})",
-            latest_version, current_version
-        );
+        println!("📦 Found new version: {latest_version} (current: {current_version})");
 
         // Verify binary artifact availability before attempting update
         let expected_hash = match verify_binary_availability(latest_version).await {
             Ok(hash) => hash,
             Err(e) => {
                 println!("❌ Update failed: Binary artifact not available");
-                println!("   {}", e);
+                println!("   {e}");
                 println!(
                     "   This usually means the release was just published and binaries are still being built."
                 );
@@ -172,7 +169,7 @@ async fn perform_update(force: bool) -> Result<()> {
                 // The self_update crate handles this internally
             }
             Err(e) => {
-                println!("❌ Update failed: {}", e);
+                println!("❌ Update failed: {e}");
                 println!("   Your current binary remains functional.");
                 println!("   You can:");
                 println!("   • Try running the update again");
@@ -199,14 +196,13 @@ async fn verify_binary_availability(version: &str) -> Result<Option<String>> {
     // Construct the expected binary download URL
     let target = get_target_triple()?;
     let archive_name = if target.contains("windows") {
-        format!("awsomarchy-standard-{}.zip", target)
+        format!("awsomarchy-standard-{target}.zip")
     } else {
-        format!("awsomarchy-standard-{}.tar.gz", target)
+        format!("awsomarchy-standard-{target}.tar.gz")
     };
 
     let binary_url = format!(
-        "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v{}/{}",
-        version, archive_name
+        "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v{version}/{archive_name}"
     );
 
     let sha256_url = construct_sha256_url(&binary_url);
@@ -277,7 +273,7 @@ async fn verify_binary_availability(version: &str) -> Result<Option<String>> {
                     match download_and_parse_sha256(&sha256_url).await {
                         Ok(expected_hash) => Ok(Some(expected_hash)),
                         Err(e) => {
-                            println!("⚠️  Warning: Failed to download SHA256 hash: {}", e);
+                            println!("⚠️  Warning: Failed to download SHA256 hash: {e}");
                             println!("   Update will proceed without integrity verification");
                             Ok(None)
                         }
@@ -300,10 +296,7 @@ async fn verify_binary_availability(version: &str) -> Result<Option<String>> {
             }
         }
         Err(e) => {
-            println!(
-                "⚠️  Warning: Could not check SHA256 hash file availability: {}",
-                e
-            );
+            println!("⚠️  Warning: Could not check SHA256 hash file availability: {e}");
             println!("   Update will proceed without integrity verification");
             Ok(None)
         }
@@ -363,7 +356,7 @@ fn construct_sha256_url(binary_url: &str) -> String {
         binary_url.replace(".zip", ".sha256")
     } else {
         // Fallback: append .sha256 extension
-        format!("{}.sha256", binary_url)
+        format!("{binary_url}.sha256")
     }
 }
 
@@ -476,9 +469,9 @@ async fn perform_safe_update(
         // Get the target and construct URLs
         let target = get_target_triple()?;
         let archive_name = if target.contains("windows") {
-            format!("awsomarchy-standard-{}.zip", target)
+            format!("awsomarchy-standard-{target}.zip")
         } else {
-            format!("awsomarchy-standard-{}.tar.gz", target)
+            format!("awsomarchy-standard-{target}.tar.gz")
         };
 
         // Get the latest release version
@@ -496,8 +489,7 @@ async fn perform_safe_update(
             .trim_start_matches('v');
 
         let download_url = format!(
-            "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v{}/{}",
-            latest_version, archive_name
+            "https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v{latest_version}/{archive_name}"
         );
 
         // Create temporary file for download
@@ -572,7 +564,7 @@ async fn perform_safe_update(
         }
         Err(e) => {
             // Handle different types of update errors
-            let error_msg = format!("{}", e);
+            let error_msg = format!("{e}");
 
             if error_msg.contains("Permission denied") {
                 Err(anyhow!(

@@ -1,7 +1,11 @@
+#[cfg(feature = "aur-theme-preview")]
+use crate::models::ThemeEntry;
 use crate::models::{
     ReadmeContent, ReadmeMetadata, RepositoryEntry, SearchIndex, SearchLocation, SearchPriority,
     Section,
 };
+#[cfg(feature = "aur-theme-preview")]
+use crate::models::{Theme, ThemeColorPalette, ThemeColors};
 use anyhow::{Result, anyhow};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
@@ -57,7 +61,7 @@ impl ReadmeParser {
         }
 
         let parser = Parser::new(markdown_content);
-        let mut readme_content = ReadmeContent::new();
+        let mut readme_content = ReadmeContent::default();
         let mut current_section: Option<Section> = None;
         let mut current_text = String::new();
         let mut is_in_header = false;
@@ -329,9 +333,39 @@ impl ReadmeParser {
         tags
     }
 
+    /// Extract theme entries from README content
+    #[cfg(feature = "aur-theme-preview")]
+    pub fn extract_themes_from_readme(&self, readme: &ReadmeContent) -> Result<Vec<ThemeEntry>> {
+        let mut theme_entries = Vec::new();
+
+        // Find the "Themes" section
+        for section in &readme.sections {
+            if section.title.to_lowercase().contains("theme") {
+                // Extract theme entries from this section
+                for entry in &section.entries {
+                    // Ensure it's a GitHub repository
+                    if self.is_github_link(&entry.url) {
+                        theme_entries.push(ThemeEntry {
+                            name: entry.title.clone(),
+                            url: entry.url.clone(),
+                            description: entry.description.clone(),
+                        });
+                    }
+                }
+                break; // Found themes section, stop looking
+            }
+        }
+
+        if theme_entries.is_empty() {
+            return Err(anyhow!("No theme entries found in README"));
+        }
+
+        Ok(theme_entries)
+    }
+
     /// Build search index from parsed sections
     fn build_search_index(&self, sections: &[Section]) -> Result<SearchIndex> {
-        let mut search_index = SearchIndex::new();
+        let mut search_index = SearchIndex::default();
 
         for (section_idx, section) in sections.iter().enumerate() {
             // Index section title (but not prioritized for repository search)
@@ -411,6 +445,224 @@ impl ReadmeParser {
 }
 
 impl Default for ReadmeParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Parser for theme files (alacritty.toml)
+#[cfg(feature = "aur-theme-preview")]
+pub struct ThemeParser;
+
+#[cfg(feature = "aur-theme-preview")]
+impl ThemeParser {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Parse alacritty.toml theme file
+    pub fn parse_alacritty_theme(&self, theme_name: &str, toml_content: &str) -> Result<Theme> {
+        use serde_json::Value;
+
+        // Parse TOML content
+        let toml_value: toml::Value =
+            toml::from_str(toml_content).map_err(|e| anyhow!("Failed to parse TOML: {}", e))?;
+
+        // Convert to JSON for easier navigation
+        let json_str = serde_json::to_string(&toml_value)?;
+        let json: Value = serde_json::from_str(&json_str)?;
+
+        // Extract colors from the TOML structure
+        let colors = self.extract_colors_from_json(&json)?;
+
+        Ok(Theme {
+            name: self.format_theme_name(theme_name),
+            description: format!("Theme colors from {theme_name}"),
+            source_url: format!(
+                "https://github.com/basecamp/omarchy/tree/main/themes/{theme_name}"
+            ),
+            colors,
+        })
+    }
+
+    /// Parse alacritty.yml theme file
+    #[cfg(feature = "aur-theme-preview")]
+    pub fn parse_alacritty_yaml(&self, theme_name: &str, yaml_content: &str) -> Result<Theme> {
+        use serde_json::Value;
+        use serde_yaml;
+
+        // Parse YAML content
+        let yaml_value: serde_yaml::Value = serde_yaml::from_str(yaml_content)
+            .map_err(|e| anyhow!("Failed to parse YAML: {}", e))?;
+
+        // Convert to JSON for easier navigation
+        let json_str = serde_json::to_string(&yaml_value)?;
+        let json: Value = serde_json::from_str(&json_str)?;
+
+        // Extract colors from the YAML structure
+        let colors = self.extract_colors_from_json(&json)?;
+
+        Ok(Theme {
+            name: self.format_theme_name(theme_name),
+            description: format!("Theme colors from {}", theme_name),
+            source_url: format!("Custom theme: {}", theme_name),
+            colors,
+        })
+    }
+
+    fn extract_colors_from_json(&self, json: &serde_json::Value) -> Result<ThemeColors> {
+        // Try to find colors in common TOML structures
+        let colors = if let Some(colors) = json.get("colors") {
+            colors
+        } else if let Some(theme) = json.get("theme") {
+            if let Some(colors) = theme.get("colors") {
+                colors
+            } else {
+                theme
+            }
+        } else {
+            json
+        };
+
+        // Extract background and foreground
+        let background = self
+            .extract_color(colors, &["primary", "background"])
+            .or_else(|| self.extract_color(colors, &["background"]))
+            .unwrap_or_else(|| "#1a1b26".to_string());
+
+        let foreground = self
+            .extract_color(colors, &["primary", "foreground"])
+            .or_else(|| self.extract_color(colors, &["foreground"]))
+            .unwrap_or_else(|| "#a9b1d6".to_string());
+
+        // Extract normal colors
+        let normal = self
+            .extract_color_palette(colors, "normal")
+            .unwrap_or_else(|| self.create_default_palette());
+
+        // Extract bright colors
+        let bright = self
+            .extract_color_palette(colors, "bright")
+            .unwrap_or_else(|| self.create_default_bright_palette());
+
+        Ok(ThemeColors {
+            background,
+            foreground,
+            normal,
+            bright,
+        })
+    }
+
+    fn extract_color(&self, colors: &serde_json::Value, path: &[&str]) -> Option<String> {
+        let mut current = colors;
+        for key in path {
+            current = current.get(key)?;
+        }
+
+        // Handle different color formats
+        match current {
+            serde_json::Value::String(s) => Some(self.normalize_color(s)),
+            serde_json::Value::Number(n) => {
+                // Convert number to hex color
+                n.as_u64().map(|num| format!("#{num:06x}"))
+            }
+            _ => None,
+        }
+    }
+
+    fn extract_color_palette(
+        &self,
+        colors: &serde_json::Value,
+        palette_name: &str,
+    ) -> Option<ThemeColorPalette> {
+        let palette = colors.get(palette_name)?;
+
+        Some(ThemeColorPalette {
+            black: self
+                .extract_color(palette, &["black"])
+                .unwrap_or_else(|| "#000000".to_string()),
+            red: self
+                .extract_color(palette, &["red"])
+                .unwrap_or_else(|| "#ff0000".to_string()),
+            green: self
+                .extract_color(palette, &["green"])
+                .unwrap_or_else(|| "#00ff00".to_string()),
+            yellow: self
+                .extract_color(palette, &["yellow"])
+                .unwrap_or_else(|| "#ffff00".to_string()),
+            blue: self
+                .extract_color(palette, &["blue"])
+                .unwrap_or_else(|| "#0000ff".to_string()),
+            magenta: self
+                .extract_color(palette, &["magenta"])
+                .unwrap_or_else(|| "#ff00ff".to_string()),
+            cyan: self
+                .extract_color(palette, &["cyan"])
+                .unwrap_or_else(|| "#00ffff".to_string()),
+            white: self
+                .extract_color(palette, &["white"])
+                .unwrap_or_else(|| "#ffffff".to_string()),
+        })
+    }
+
+    fn normalize_color(&self, color: &str) -> String {
+        let color = color.trim();
+
+        // Ensure color starts with #
+        if color.starts_with('#') {
+            color.to_string()
+        } else if color.len() == 6 && color.chars().all(|c| c.is_ascii_hexdigit()) {
+            format!("#{color}")
+        } else {
+            // Try to parse as hex without #
+            color.to_string()
+        }
+    }
+
+    fn format_theme_name(&self, name: &str) -> String {
+        name.split('-')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => {
+                        first.to_uppercase().collect::<String>() + &chars.collect::<String>()
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn create_default_palette(&self) -> ThemeColorPalette {
+        ThemeColorPalette {
+            black: "#32344a".to_string(),
+            red: "#f7768e".to_string(),
+            green: "#9ece6a".to_string(),
+            yellow: "#e0af68".to_string(),
+            blue: "#7aa2f7".to_string(),
+            magenta: "#ad8ee6".to_string(),
+            cyan: "#449dab".to_string(),
+            white: "#787c99".to_string(),
+        }
+    }
+
+    fn create_default_bright_palette(&self) -> ThemeColorPalette {
+        ThemeColorPalette {
+            black: "#444b6a".to_string(),
+            red: "#ff7a93".to_string(),
+            green: "#b9f27c".to_string(),
+            yellow: "#ff9e64".to_string(),
+            blue: "#7da6ff".to_string(),
+            magenta: "#bb9af7".to_string(),
+            cyan: "#0db9d7".to_string(),
+            white: "#acb0d0".to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "aur-theme-preview")]
+impl Default for ThemeParser {
     fn default() -> Self {
         Self::new()
     }
