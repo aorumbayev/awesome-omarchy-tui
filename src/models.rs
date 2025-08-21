@@ -21,27 +21,11 @@ impl AppState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReadmeContent {
     pub sections: Vec<Section>,
     pub search_index: SearchIndex,
     pub metadata: ReadmeMetadata,
-}
-
-impl ReadmeContent {
-    pub fn new() -> Self {
-        Self {
-            sections: Vec::new(),
-            search_index: SearchIndex::new(),
-            metadata: ReadmeMetadata::default(),
-        }
-    }
-}
-
-impl Default for ReadmeContent {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +48,14 @@ impl Default for ReadmeMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepositoryEntry {
+    pub title: String,
+    pub url: String,
+    pub description: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Section {
     pub title: String,
     pub entries: Vec<RepositoryEntry>,
@@ -82,28 +74,21 @@ impl Section {
     }
 }
 
+#[cfg(feature = "aur-theme-preview")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RepositoryEntry {
-    pub title: String,
+pub struct ThemeEntry {
+    pub name: String,
     pub url: String,
     pub description: String,
-    pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SearchIndex {
     pub terms: HashMap<String, Vec<SearchLocation>>,
     pub total_terms: usize,
 }
 
 impl SearchIndex {
-    pub fn new() -> Self {
-        Self {
-            terms: HashMap::new(),
-            total_terms: 0,
-        }
-    }
-
     pub fn add_term(&mut self, term: String, location: SearchLocation) {
         self.terms
             .entry(term.to_lowercase())
@@ -114,37 +99,62 @@ impl SearchIndex {
 
     pub fn search(&self, query: &str) -> Vec<SearchResult> {
         let query_lower = query.to_lowercase();
-        let mut results = Vec::new();
+        let mut entry_results: HashMap<(usize, Option<usize>), (SearchResult, f64)> =
+            HashMap::new();
 
-        for (term, locations) in &self.terms {
-            if term.contains(&query_lower) {
-                for location in locations {
-                    // Skip raw content matches - we only want names and descriptions
+        self.terms
+            .iter()
+            .filter(|(term, _)| term.contains(&query_lower))
+            .flat_map(|(term, locations)| {
+                locations.iter().filter_map(|location| {
                     if location.search_priority == SearchPriority::RawContent {
-                        continue;
+                        return None;
                     }
 
-                    results.push(SearchResult {
-                        section_index: location.section_index,
-                        entry_index: location.entry_index,
-                        line_content: location.line_content.clone(),
-                        relevance_score: calculate_relevance_score(term, &query_lower)
-                            * location.search_priority.score_multiplier(),
-                        github_url: location.github_url.clone(),
+                    let entry_key = (location.section_index, location.entry_index);
+                    let relevance_score = calculate_relevance_score(term, &query_lower)
+                        * location.search_priority.score_multiplier();
+
+                    Some((entry_key, location, relevance_score))
+                })
+            })
+            .for_each(|(entry_key, location, relevance_score)| {
+                entry_results
+                    .entry(entry_key)
+                    .and_modify(|(existing_result, existing_max_score)| {
+                        // Prefer repository names for display
+                        if location.search_priority == SearchPriority::RepositoryName {
+                            existing_result.line_content = location.line_content.clone();
+                        }
+                        if relevance_score > *existing_max_score {
+                            *existing_max_score = relevance_score;
+                            existing_result.relevance_score = relevance_score;
+                        }
+                    })
+                    .or_insert_with(|| {
+                        (
+                            SearchResult {
+                                section_index: location.section_index,
+                                entry_index: location.entry_index,
+                                line_content: location.line_content.clone(),
+                                relevance_score,
+                                github_url: location.github_url.clone(),
+                            },
+                            relevance_score,
+                        )
                     });
-                }
-            }
-        }
+            });
 
-        // Sort by relevance score (higher is better)
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
+        let mut results: Vec<SearchResult> = entry_results
+            .into_values()
+            .map(|(result, _)| result)
+            .collect();
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results
-    }
-}
-
-impl Default for SearchIndex {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -292,4 +302,119 @@ pub struct SearchResult {
     pub line_content: String,
     pub relevance_score: f64,
     pub github_url: Option<String>,
+}
+
+/// Theme browser related models
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Theme {
+    pub name: String,
+    pub colors: ThemeColors,
+    pub source_url: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeColors {
+    pub background: String,
+    pub foreground: String,
+    pub normal: ThemeColorPalette,
+    pub bright: ThemeColorPalette,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeColorPalette {
+    pub black: String,
+    pub red: String,
+    pub green: String,
+    pub yellow: String,
+    pub blue: String,
+    pub magenta: String,
+    pub cyan: String,
+    pub white: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ThemeBrowserState {
+    pub themes: Vec<Theme>,
+    pub selected_index: Option<usize>,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub preview_theme: Option<Theme>,
+    pub search_mode: bool,
+    pub search_query: String,
+    pub filtered_themes: Vec<usize>, // Indices of themes matching search
+    pub filtered_selected: Option<usize>, // Selected index in filtered results
+}
+
+/// Global theme applicator for in-memory theme switching
+#[derive(Debug, Clone, Default)]
+pub struct ThemeApplicator {
+    pub current_theme: Option<Theme>,
+    pub original_theme: Option<Theme>,
+    pub is_applied: bool,
+}
+
+impl ThemeApplicator {
+    pub fn apply_theme(&mut self, theme: Theme) {
+        // Store original theme only on first application
+        if self.original_theme.is_none() && !self.is_applied {
+            self.original_theme = Some(Self::create_default_theme());
+        }
+
+        self.current_theme = Some(theme);
+        self.is_applied = true;
+    }
+
+    pub fn clear_theme(&mut self) {
+        *self = Self::default();
+    }
+
+    fn create_default_theme() -> Theme {
+        Theme {
+            name: "Default".to_string(),
+            description: "Default TUI theme".to_string(),
+            source_url: "builtin".to_string(),
+            colors: ThemeColors {
+                background: "#1a1b26".to_string(),
+                foreground: "#a9b1d6".to_string(),
+                normal: ThemeColorPalette {
+                    black: "#32344a".to_string(),
+                    red: "#f7768e".to_string(),
+                    green: "#9ece6a".to_string(),
+                    yellow: "#e0af68".to_string(),
+                    blue: "#7aa2f7".to_string(),
+                    magenta: "#ad8ee6".to_string(),
+                    cyan: "#449dab".to_string(),
+                    white: "#787c99".to_string(),
+                },
+                bright: ThemeColorPalette {
+                    black: "#444b6a".to_string(),
+                    red: "#ff7a93".to_string(),
+                    green: "#b9f27c".to_string(),
+                    yellow: "#ff9e64".to_string(),
+                    blue: "#7da6ff".to_string(),
+                    magenta: "#bb9af7".to_string(),
+                    cyan: "#0db9d7".to_string(),
+                    white: "#acb0d0".to_string(),
+                },
+            },
+        }
+    }
+}
+
+/// Simple theme entry extracted from README
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum PreviewState {
+    None,
+    Loading,             // Theme loading in progress
+    Applied(Box<Theme>), // Theme currently applied
+    Error,               // Error loading theme
+}
+
+impl Default for PreviewState {
+    fn default() -> Self {
+        Self::None
+    }
 }

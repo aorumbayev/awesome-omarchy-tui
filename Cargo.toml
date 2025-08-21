@@ -22,6 +22,8 @@ pulldown-cmark = "0.11"
 clap = { version = "4.5", features = ["derive"] }
 sha2 = "0.10"
 hex = "0.4"
+toml = "0.8"
+serde_yaml = { version = "0.9", optional = true }
 self_update = { version = "0.42.0", features = [
     "archive-tar",
     "archive-zip", 
@@ -39,6 +41,7 @@ panic = "abort"
 [features]
 default = ["updater"]
 updater = ["dep:self_update"]
+aur-theme-preview = ["dep:serde_yaml"]
 
 [[bin]]
 name = "awsomarchy"

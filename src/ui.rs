@@ -7,10 +7,49 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
 
+/// Dynamic color scheme that adapts to applied themes
+#[allow(dead_code)]
+pub struct ThemeColors {
+    pub background: Color,
+    pub foreground: Color,
+    pub primary: Color,
+    pub secondary: Color,
+    pub accent: Color,
+    pub success: Color,
+    pub warning: Color,
+    pub error: Color,
+    pub muted: Color,
+}
+
+impl ThemeColors {
+    pub fn new() -> Self {
+        Self {
+            background: Color::Black,
+            foreground: Color::White,
+            primary: Color::Blue,
+            secondary: Color::Cyan,
+            accent: Color::LightBlue,
+            success: Color::Green,
+            warning: Color::Yellow,
+            error: Color::Red,
+            muted: Color::DarkGray,
+        }
+    }
+}
+
+impl Default for ThemeColors {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn draw(f: &mut Frame, app: &mut App) {
+    // Use default theme colors for main UI - themes only affect preview panels
+    let default_theme_colors = ThemeColors::default();
+
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -20,7 +59,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(f.size());
 
-    draw_header(f, main_chunks[0], app);
+    draw_header(f, main_chunks[0], app, &default_theme_colors);
 
     // Split the main content area horizontally for sidebar and content
     let content_chunks = Layout::default()
@@ -31,16 +70,18 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(main_chunks[1]);
 
-    draw_sidebar(f, content_chunks[0], app);
-    draw_main_content(f, content_chunks[1], app);
-    draw_footer(f, main_chunks[2], app);
+    draw_sidebar(f, content_chunks[0], app, &default_theme_colors);
+    draw_main_content(f, content_chunks[1], app, &default_theme_colors);
+    draw_footer(f, main_chunks[2], app, &default_theme_colors);
 
-    if app.search_mode {
-        draw_search_popup(f, app);
+    if app.theme_browser_mode {
+        draw_theme_browser_popup(f, app, &default_theme_colors);
+    } else if app.search_mode {
+        draw_search_popup(f, app, &default_theme_colors);
     }
 }
 
-fn draw_header(f: &mut Frame, area: Rect, app: &App) {
+fn draw_header(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
     let title_text = if let Some(summary) = app.get_metadata_summary() {
         summary
     } else {
@@ -54,46 +95,46 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
 
     // Premium main title with enhanced typography
     let title = Paragraph::new(Line::from(vec![
-        Span::styled("✨ ", Style::default().fg(Color::Yellow)),
+        Span::styled("✨ ", Style::default().fg(theme.warning)),
         Span::styled(
             "Awesome Omarchy",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.secondary)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" ✨", Style::default().fg(Color::Yellow)),
+        Span::styled(" ✨", Style::default().fg(theme.warning)),
     ]))
     .alignment(Alignment::Center);
     f.render_widget(title, chunks[0]);
 
     let meta_style = if app.state.is_loading() {
         Style::default()
-            .fg(Color::Yellow)
+            .fg(theme.warning)
             .add_modifier(Modifier::DIM)
     } else {
-        Style::default().fg(Color::Gray)
+        Style::default().fg(theme.muted)
     };
 
     let meta = Paragraph::new(Line::from(vec![
-        Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+        Span::styled("│ ", Style::default().fg(theme.muted)),
         Span::styled(title_text, meta_style),
-        Span::styled(" │", Style::default().fg(Color::DarkGray)),
+        Span::styled(" │", Style::default().fg(theme.muted)),
     ]))
     .alignment(Alignment::Center);
     f.render_widget(meta, chunks[1]);
 }
 
-fn draw_sidebar(f: &mut Frame, area: Rect, app: &mut App) {
+fn draw_sidebar(f: &mut Frame, area: Rect, app: &mut App, theme: &ThemeColors) {
     match &app.state {
         AppState::Loading => {
             let loading = Paragraph::new("🔄 Loading...")
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(theme.warning))
                 .alignment(Alignment::Center)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
                         .title("📂 Sections")
-                        .border_style(Style::default().fg(Color::Blue)),
+                        .border_style(Style::default().fg(theme.primary)),
                 );
             f.render_widget(loading, area);
         }
@@ -116,36 +157,36 @@ fn draw_sidebar(f: &mut Frame, area: Rect, app: &mut App) {
                             0
                         };
 
-                        let _content_text = format!("{} ({})", tab.title, entry_count);
-
                         if is_selected {
                             ListItem::new(Line::from(vec![
                                 Span::styled(
                                     "▶ ",
                                     Style::default()
-                                        .fg(Color::Green)
+                                        .fg(theme.success)
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(
                                     &tab.title,
                                     Style::default()
-                                        .fg(Color::White)
+                                        .fg(theme.foreground)
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(" ", Style::default()),
                                 Span::styled(
-                                    format!("({})", entry_count),
-                                    Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
+                                    format!("({entry_count})"),
+                                    Style::default()
+                                        .fg(theme.secondary)
+                                        .add_modifier(Modifier::DIM),
                                 ),
                             ]))
                         } else {
                             ListItem::new(Line::from(vec![
                                 Span::styled("  ", Style::default()),
-                                Span::styled(&tab.title, Style::default().fg(Color::Gray)),
+                                Span::styled(&tab.title, Style::default().fg(theme.muted)),
                                 Span::styled(" ", Style::default()),
                                 Span::styled(
-                                    format!("({})", entry_count),
-                                    Style::default().fg(Color::DarkGray),
+                                    format!("({entry_count})"),
+                                    Style::default().fg(theme.muted),
                                 ),
                             ]))
                         }
@@ -154,9 +195,9 @@ fn draw_sidebar(f: &mut Frame, area: Rect, app: &mut App) {
 
                 // Determine border style based on focus
                 let border_style = if app.focus_area == FocusArea::Sidebar {
-                    Style::default().fg(Color::Green) // Focused
+                    Style::default().fg(theme.success) // Focused
                 } else {
-                    Style::default().fg(Color::Blue) // Not focused
+                    Style::default().fg(theme.primary) // Not focused
                 };
 
                 let sidebar_list = List::new(items)
@@ -174,62 +215,58 @@ fn draw_sidebar(f: &mut Frame, area: Rect, app: &mut App) {
                 f.render_widget(sidebar_list, area);
             } else {
                 let empty = Paragraph::new("No sections available")
-                    .style(Style::default().fg(Color::Gray))
+                    .style(Style::default().fg(theme.muted))
                     .alignment(Alignment::Center)
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
                             .title("📂 Sections")
-                            .border_style(Style::default().fg(Color::Yellow)),
+                            .border_style(Style::default().fg(theme.warning)),
                     );
                 f.render_widget(empty, area);
             }
         }
         AppState::Error(error) => {
-            let error_text = Paragraph::new(format!("❌ Error: {}", error))
-                .style(Style::default().fg(Color::Red))
+            let error_text = Paragraph::new(format!("❌ Error: {error}"))
+                .style(Style::default().fg(theme.error))
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true })
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
                         .title("📂 Sections")
-                        .border_style(Style::default().fg(Color::Red)),
+                        .border_style(Style::default().fg(theme.error)),
                 );
             f.render_widget(error_text, area);
         }
     }
 }
 
-fn draw_main_content(f: &mut Frame, area: Rect, app: &mut App) {
+fn draw_main_content(f: &mut Frame, area: Rect, app: &mut App, theme: &ThemeColors) {
     match &app.state {
         AppState::Loading => {
-            draw_loading(f, area);
+            draw_loading(f, area, theme);
         }
         AppState::Ready => {
-            draw_repository_content(f, area, app);
+            draw_repository_content(f, area, app, theme);
         }
         AppState::Error(error) => {
-            draw_error(f, area, error);
+            draw_error(f, area, error, theme);
         }
     }
 }
 
-fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App) {
-    // This is the main content rendering logic, extracted from draw_tabs_and_content
+fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App, theme: &ThemeColors) {
+    use ratatui::widgets::ListState;
+
     if let Some(current_tab) = app.current_tab() {
         let section_title = current_tab.title.clone();
         let section_index = current_tab.section_index;
-        let scroll_offset = current_tab.scroll_offset;
 
-        // Get list state first (mutable borrow)
-        let selected_index = if let Some(list_state) = app.get_current_list_state() {
-            list_state.selected_index
-        } else {
-            None
-        };
+        // Get selected index from list state
+        let selected_index = current_tab.list_state.selected_index;
 
-        // Collect section-specific data (immutable borrow, separate from above)
+        // Get section data
         let section_data = if let Some(ref readme) = app.readme_content {
             readme
                 .sections
@@ -244,32 +281,33 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App) {
             let entry_count = entries.len();
 
             if has_entries {
-                // Create List items from repository entries with enumeration - Fixed data access
+                // Create List items from repository entries
                 let items: Vec<ListItem> = entries
                     .iter()
                     .enumerate()
                     .map(|(idx, entry)| {
                         let is_selected = selected_index == Some(idx);
 
-                        // Create elegant formatted list item with enhanced typography
+                        // Create formatted list item
                         let title_line = if is_selected {
-                            // Elegant selected item with subtle highlight and refined borders
                             Line::from(vec![
                                 Span::styled(
                                     "▎",
                                     Style::default()
-                                        .fg(Color::Cyan)
+                                        .fg(theme.secondary)
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(
                                     format!("{:2}. ", idx + 1),
-                                    Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
+                                    Style::default()
+                                        .fg(theme.secondary)
+                                        .add_modifier(Modifier::DIM),
                                 ),
-                                Span::styled("● ", Style::default().fg(Color::Green)),
+                                Span::styled("● ", Style::default().fg(theme.success)),
                                 Span::styled(
                                     &entry.title,
                                     Style::default()
-                                        .fg(Color::White)
+                                        .fg(theme.foreground)
                                         .add_modifier(Modifier::BOLD),
                                 ),
                             ])
@@ -278,42 +316,42 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App) {
                                 Span::styled("  ", Style::default()),
                                 Span::styled(
                                     format!("{:2}. ", idx + 1),
-                                    Style::default().fg(Color::DarkGray),
+                                    Style::default().fg(theme.muted),
                                 ),
-                                Span::styled("○ ", Style::default().fg(Color::Gray)),
-                                Span::styled(&entry.title, Style::default().fg(Color::White)),
+                                Span::styled("○ ", Style::default().fg(theme.muted)),
+                                Span::styled(&entry.title, Style::default().fg(theme.foreground)),
                             ])
                         };
 
                         let mut lines = vec![title_line];
 
-                        // Add description with enhanced typography and spacing
+                        // Add description
                         if !entry.description.is_empty() {
                             let desc_line = if is_selected {
                                 Line::from(vec![
                                     Span::styled(
                                         "▎",
                                         Style::default()
-                                            .fg(Color::Cyan)
+                                            .fg(theme.secondary)
                                             .add_modifier(Modifier::BOLD),
                                     ),
                                     Span::styled("    ", Style::default()),
-                                    Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+                                    Span::styled("│ ", Style::default().fg(theme.muted)),
                                     Span::styled(
                                         &entry.description,
                                         Style::default()
-                                            .fg(Color::Gray)
+                                            .fg(theme.muted)
                                             .add_modifier(Modifier::ITALIC),
                                     ),
                                 ])
                             } else {
                                 Line::from(vec![
                                     Span::styled("      ", Style::default()),
-                                    Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+                                    Span::styled("│ ", Style::default().fg(theme.muted)),
                                     Span::styled(
                                         &entry.description,
                                         Style::default()
-                                            .fg(Color::DarkGray)
+                                            .fg(theme.muted)
                                             .add_modifier(Modifier::ITALIC),
                                     ),
                                 ])
@@ -321,7 +359,7 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App) {
                             lines.push(desc_line);
                         }
 
-                        // Add tags with refined presentation
+                        // Add tags
                         if !entry.tags.is_empty() {
                             let tags_text = entry.tags.join(" • ");
                             let tags_line = if is_selected {
@@ -329,26 +367,26 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App) {
                                     Span::styled(
                                         "▎",
                                         Style::default()
-                                            .fg(Color::Cyan)
+                                            .fg(theme.secondary)
                                             .add_modifier(Modifier::BOLD),
                                     ),
                                     Span::styled("    ", Style::default()),
-                                    Span::styled("🏷 ", Style::default().fg(Color::Yellow)),
+                                    Span::styled("🏷 ", Style::default().fg(theme.warning)),
                                     Span::styled(
                                         tags_text,
                                         Style::default()
-                                            .fg(Color::Yellow)
+                                            .fg(theme.warning)
                                             .add_modifier(Modifier::ITALIC),
                                     ),
                                 ])
                             } else {
                                 Line::from(vec![
                                     Span::styled("      ", Style::default()),
-                                    Span::styled("🏷 ", Style::default().fg(Color::DarkGray)),
+                                    Span::styled("🏷 ", Style::default().fg(theme.muted)),
                                     Span::styled(
                                         tags_text,
                                         Style::default()
-                                            .fg(Color::DarkGray)
+                                            .fg(theme.muted)
                                             .add_modifier(Modifier::ITALIC),
                                     ),
                                 ])
@@ -356,69 +394,69 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App) {
                             lines.push(tags_line);
                         }
 
-                        // Add URL with premium styling
+                        // Add URL
                         let url_line = if is_selected {
                             Line::from(vec![
                                 Span::styled(
                                     "▎",
                                     Style::default()
-                                        .fg(Color::Cyan)
+                                        .fg(theme.secondary)
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled("    ", Style::default()),
-                                Span::styled("🔗 ", Style::default().fg(Color::Blue)),
+                                Span::styled("🔗 ", Style::default().fg(theme.primary)),
                                 Span::styled(
                                     &entry.url,
                                     Style::default()
-                                        .fg(Color::Blue)
+                                        .fg(theme.primary)
                                         .add_modifier(Modifier::UNDERLINED),
                                 ),
                             ])
                         } else {
                             Line::from(vec![
                                 Span::styled("      ", Style::default()),
-                                Span::styled("🔗 ", Style::default().fg(Color::DarkGray)),
-                                Span::styled(&entry.url, Style::default().fg(Color::Blue)),
+                                Span::styled("🔗 ", Style::default().fg(theme.muted)),
+                                Span::styled(&entry.url, Style::default().fg(theme.primary)),
                             ])
                         };
                         lines.push(url_line);
 
-                        // Add subtle separator for selected items
+                        // Add separator for selected items
                         if is_selected {
                             lines.push(Line::from(vec![Span::styled(
                                 "▎",
                                 Style::default()
-                                    .fg(Color::Cyan)
+                                    .fg(theme.secondary)
                                     .add_modifier(Modifier::BOLD),
                             )]));
                         }
 
-                        // Add breathing room between entries
+                        // Add spacing between entries
                         lines.push(Line::from(""));
 
                         ListItem::new(lines)
                     })
                     .collect();
 
-                // Create ratatui ListState with the selected index
+                // Create ratatui ListState
                 let mut ratatui_state = ListState::default();
                 ratatui_state.select(selected_index);
 
                 // Determine border style based on focus
                 let border_style = if app.focus_area == FocusArea::Content {
-                    Style::default().fg(Color::Green) // Focused
+                    Style::default().fg(theme.success)
                 } else {
-                    Style::default().fg(Color::Blue) // Not focused
+                    Style::default().fg(theme.primary)
                 };
 
                 let list = List::new(items)
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
-                            .title(format!("📋 {} ({} entries)", section_title, entry_count))
+                            .title(format!("📋 {section_title} ({entry_count} entries)"))
                             .border_style(border_style),
                     )
-                    .style(Style::default().fg(Color::White))
+                    .style(Style::default().fg(theme.foreground))
                     .highlight_style(Style::default())
                     .highlight_symbol("")
                     .direction(ratatui::widgets::ListDirection::TopToBottom);
@@ -432,36 +470,76 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App) {
                 {
                     // Show raw content for sections without structured entries
                     let border_style = if app.focus_area == FocusArea::Content {
-                        Style::default().fg(Color::Green) // Focused
+                        Style::default().fg(theme.success)
                     } else {
-                        Style::default().fg(Color::Blue) // Not focused
+                        Style::default().fg(theme.primary)
                     };
 
-                    let content = Paragraph::new(raw_content.clone())
-                        .wrap(Wrap { trim: true })
-                        .scroll((scroll_offset as u16, 0))
+                    let paragraph = Paragraph::new(raw_content)
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title(format!("📄 {}", section_title))
+                                .title(format!("📄 {section_title}"))
+                                .border_style(border_style),
+                        )
+                        .style(Style::default().fg(theme.foreground))
+                        .wrap(Wrap { trim: true });
+                    f.render_widget(paragraph, area);
+                } else {
+                    // Empty section
+                    let border_style = if app.focus_area == FocusArea::Content {
+                        Style::default().fg(theme.success)
+                    } else {
+                        Style::default().fg(theme.primary)
+                    };
+
+                    let empty = Paragraph::new("📭 No entries in this section")
+                        .style(Style::default().fg(theme.muted))
+                        .alignment(Alignment::Center)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title(format!("📂 {section_title}"))
                                 .border_style(border_style),
                         );
-                    f.render_widget(content, area);
-                } else {
-                    draw_empty_section(f, area, &section_title, &app.focus_area);
+                    f.render_widget(empty, area);
                 }
             }
         } else {
-            // Section not found - this should not happen but handle gracefully
-            draw_empty_section(f, area, "Unknown Section", &app.focus_area);
+            // Section not found
+            let border_style = if app.focus_area == FocusArea::Content {
+                Style::default().fg(theme.success)
+            } else {
+                Style::default().fg(theme.primary)
+            };
+
+            let error = Paragraph::new("Section not found")
+                .style(Style::default().fg(theme.error))
+                .alignment(Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("❌ Error")
+                        .border_style(border_style),
+                );
+            f.render_widget(error, area);
         }
     } else {
         // No current tab
-        draw_empty_section(f, area, "No Content", &app.focus_area);
+        let error = Paragraph::new("No section selected")
+            .style(Style::default().fg(theme.muted))
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("📂 Content")
+                    .border_style(Style::default().fg(theme.primary)),
+            );
+        f.render_widget(error, area);
     }
 }
 
-fn draw_loading(f: &mut Frame, area: Rect) {
+fn draw_loading(f: &mut Frame, area: Rect, theme: &ThemeColors) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -484,18 +562,20 @@ fn draw_loading(f: &mut Frame, area: Rect) {
         Span::styled(
             "⏳ ",
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.warning)
                 .add_modifier(Modifier::SLOW_BLINK),
         ),
         Span::styled(
             "Loading README content...\n\n",
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.warning)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             "✨ Fetching awesome resources from GitHub ✨",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(theme.secondary)
+                .add_modifier(Modifier::DIM),
         ),
     ]))
     .alignment(Alignment::Center)
@@ -503,20 +583,20 @@ fn draw_loading(f: &mut Frame, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .title(Line::from(vec![
-                Span::styled("📡 ", Style::default().fg(Color::Yellow)),
+                Span::styled("📡 ", Style::default().fg(theme.warning)),
                 Span::styled(
                     "Loading",
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(theme.warning)
                         .add_modifier(Modifier::BOLD),
                 ),
             ]))
-            .border_style(Style::default().fg(Color::Yellow)),
+            .border_style(Style::default().fg(theme.warning)),
     );
     f.render_widget(loading, loading_chunks[1]);
 }
 
-fn draw_error(f: &mut Frame, area: Rect, error: &str) {
+fn draw_error(f: &mut Frame, area: Rect, error: &str, theme: &ThemeColors) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -538,22 +618,26 @@ fn draw_error(f: &mut Frame, area: Rect, error: &str) {
     let error_text = Paragraph::new(Line::from(vec![
         Span::styled(
             "❌ ",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.error)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             "Error Occurred\n\n",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.error)
+                .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(error, Style::default().fg(Color::Gray)),
+        Span::styled(error, Style::default().fg(theme.muted)),
         Span::styled("\n\n", Style::default()),
-        Span::styled("💡 Press ", Style::default().fg(Color::DarkGray)),
+        Span::styled("💡 Press ", Style::default().fg(theme.muted)),
         Span::styled(
             "'R'",
             Style::default()
-                .fg(Color::Yellow)
+                .fg(theme.warning)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" to retry", Style::default().fg(Color::DarkGray)),
+        Span::styled(" to retry", Style::default().fg(theme.muted)),
     ]))
     .alignment(Alignment::Center)
     .wrap(Wrap { trim: true })
@@ -561,156 +645,103 @@ fn draw_error(f: &mut Frame, area: Rect, error: &str) {
         Block::default()
             .borders(Borders::ALL)
             .title(Line::from(vec![
-                Span::styled("⚠️  ", Style::default().fg(Color::Red)),
+                Span::styled("⚠️  ", Style::default().fg(theme.error)),
                 Span::styled(
                     "Error",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.error)
+                        .add_modifier(Modifier::BOLD),
                 ),
             ]))
-            .border_style(Style::default().fg(Color::Red)),
+            .border_style(Style::default().fg(theme.error)),
     );
     f.render_widget(error_text, error_chunks[1]);
 }
 
-fn draw_empty_section(f: &mut Frame, area: Rect, section_title: &str, focus_area: &FocusArea) {
-    let border_style = if *focus_area == FocusArea::Content {
-        Style::default().fg(Color::Green) // Focused
-    } else {
-        Style::default().fg(Color::Blue) // Not focused
-    };
-
-    let empty_message = Paragraph::new(Line::from(vec![
-        Span::styled("📭 ", Style::default().fg(Color::Gray)),
-        Span::styled(
-            "This section contains no repository entries.\n\n",
-            Style::default()
-                .fg(Color::Gray)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("💡 Try:\n", Style::default().fg(Color::DarkGray)),
-        Span::styled("• Press ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            "'R' ",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("to reload content\n", Style::default().fg(Color::DarkGray)),
-        Span::styled("• Use ", Style::default().fg(Color::DarkGray)),
-        Span::styled(
-            "'h/l' ",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            "to explore other sections",
-            Style::default().fg(Color::DarkGray),
-        ),
-    ]))
-    .alignment(Alignment::Center)
-    .wrap(Wrap { trim: true })
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(Line::from(vec![
-                Span::styled("📄 ", Style::default().fg(Color::Gray)),
-                Span::styled(
-                    section_title,
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]))
-            .border_style(border_style),
-    );
-    f.render_widget(empty_message, area);
-}
-
-fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
+fn draw_footer(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
     let help_text = if app.search_mode {
         Line::from(vec![
             Span::styled(
                 "ESC",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme.warning)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(": Exit search │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(": Exit search │ ", Style::default().fg(theme.muted)),
             Span::styled(
                 "j/k",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.secondary)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(": Navigate │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(": Navigate │ ", Style::default().fg(theme.muted)),
             Span::styled(
                 "Enter",
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(theme.success)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 ": Open URL │ Type to search...",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             ),
         ])
     } else {
+        let theme_key_style = if app.is_theme_applied() {
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(theme.secondary)
+                .add_modifier(Modifier::BOLD)
+        };
+
         Line::from(vec![
             Span::styled(
                 "h/l",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.secondary)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(": Switch sections │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(": Switch sections │ ", Style::default().fg(theme.muted)),
             Span::styled(
                 "j/k",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.secondary)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(": Navigate │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(": Navigate │ ", Style::default().fg(theme.muted)),
             Span::styled(
                 "Enter",
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(theme.success)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(": Open URL │ ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                "Tab",
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(": Next │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(": Open URL │ ", Style::default().fg(theme.muted)),
             Span::styled(
                 "R",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme.warning)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(": Reload │ ", Style::default().fg(Color::DarkGray)),
+            Span::styled(": Reload │ ", Style::default().fg(theme.muted)),
+            Span::styled("P", theme_key_style),
             Span::styled(
-                "G",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
+                if app.is_theme_applied() {
+                    ": Themes (applied) │ "
+                } else {
+                    ": Themes │ "
+                },
+                Style::default().fg(theme.muted),
             ),
-            Span::styled(": GitHub │ ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                "/",
-                Style::default()
-                    .fg(Color::Magenta)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(": Search │ ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 "Q",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.error)
+                    .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(": Quit", Style::default().fg(Color::DarkGray)),
+            Span::styled(": Quit", Style::default().fg(theme.muted)),
         ])
     };
 
@@ -718,7 +749,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(footer, area);
 }
 
-fn draw_search_popup(f: &mut Frame, app: &App) {
+fn draw_search_popup(f: &mut Frame, app: &App, theme: &ThemeColors) {
     let popup_area = centered_rect(80, 60, f.size());
 
     f.render_widget(Clear, popup_area);
@@ -729,150 +760,63 @@ fn draw_search_popup(f: &mut Frame, app: &App) {
         .split(popup_area);
 
     // Enhanced search input with premium styling
-    let cursor_indicator = if app.search_query.is_empty() {
-        "Type to search..."
-    } else {
-        ""
-    };
-    let search_text = if app.search_query.is_empty() && cursor_indicator == "Type to search..." {
-        Line::from(vec![
-            Span::styled("🔍 ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                cursor_indicator,
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
-            ),
-        ])
-    } else {
-        Line::from(vec![
-            Span::styled("🔍 ", Style::default().fg(Color::Yellow)),
-            Span::styled(&app.search_query, Style::default().fg(Color::Yellow)),
-            Span::styled(
-                "▌",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ), // Blinking cursor
-        ])
-    };
+    let search_text = Line::from(vec![
+        Span::styled("🔍 ", Style::default().fg(theme.warning)),
+        Span::styled(&app.search_query, Style::default().fg(theme.warning)),
+        Span::styled(
+            "▌",
+            Style::default()
+                .fg(theme.warning)
+                .add_modifier(Modifier::SLOW_BLINK),
+        ),
+    ]);
 
     let search_input = Paragraph::new(search_text).block(
         Block::default()
             .borders(Borders::ALL)
             .title(Line::from(vec![
-                Span::styled("🔍 ", Style::default().fg(Color::Yellow)),
+                Span::styled("🔍 ", Style::default().fg(theme.warning)),
                 Span::styled(
                     "Search",
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(theme.warning)
                         .add_modifier(Modifier::BOLD),
                 ),
             ]))
-            .border_style(Style::default().fg(Color::Yellow)),
+            .border_style(Style::default().fg(theme.warning)),
     );
     f.render_widget(search_input, chunks[0]);
 
-    // Enhanced search results display
+    // Simplified results display
     if !app.search_results.is_empty() {
         let results: Vec<ListItem> = app
             .search_results
             .iter()
-            .take(20) // Limit to top 20 results
+            .take(10)
             .enumerate()
             .map(|(i, result)| {
-                if let Some(ref readme) = app.readme_content {
-                    if let Some(section) = readme.sections.get(result.section_index) {
-                        // Premium format with enhanced typography
-                        if let Some(entry_idx) = result.entry_index
-                            && let Some(entry) = section.entries.get(entry_idx)
-                        {
-                            let truncated_desc = if entry.description.is_empty() {
-                                "No description".to_string()
-                            } else {
-                                let desc_chars: String =
-                                    entry.description.chars().take(50).collect();
-                                if entry.description.len() > 50 {
-                                    format!("{}...", desc_chars)
-                                } else {
-                                    desc_chars
-                                }
-                            };
-
-                            let lines = vec![
-                                Line::from(vec![
-                                    Span::styled(
-                                        format!("{:2}. ", i + 1),
-                                        Style::default()
-                                            .fg(Color::Cyan)
-                                            .add_modifier(Modifier::DIM),
-                                    ),
-                                    Span::styled("● ", Style::default().fg(Color::Green)),
-                                    Span::styled(
-                                        entry.title.clone(),
-                                        Style::default()
-                                            .fg(Color::White)
-                                            .add_modifier(Modifier::BOLD),
-                                    ),
-                                ]),
-                                Line::from(vec![
-                                    Span::styled("     ", Style::default()),
-                                    Span::styled("│ ", Style::default().fg(Color::DarkGray)),
-                                    Span::styled(
-                                        truncated_desc,
-                                        Style::default()
-                                            .fg(Color::Gray)
-                                            .add_modifier(Modifier::ITALIC),
-                                    ),
-                                ]),
-                                Line::from(vec![
-                                    Span::styled("     ", Style::default()),
-                                    Span::styled("└─ ", Style::default().fg(Color::DarkGray)),
-                                    Span::styled(
-                                        section.title.clone(),
-                                        Style::default().fg(Color::Blue),
-                                    ),
-                                ]),
-                            ];
-                            return ListItem::new(lines);
+                let display_text = app
+                    .readme_content
+                    .as_ref()
+                    .and_then(|readme| {
+                        let section = readme.sections.get(result.section_index)?;
+                        match result.entry_index {
+                            Some(entry_idx) => section.entries.get(entry_idx).map(|e| &e.title),
+                            None => Some(&section.title),
                         }
+                    })
+                    .unwrap_or(&result.line_content);
 
-                        // Fallback formatting
-                        ListItem::new(Line::from(vec![
-                            Span::styled(
-                                format!("{:2}. ", i + 1),
-                                Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
-                            ),
-                            Span::styled("[", Style::default().fg(Color::DarkGray)),
-                            Span::styled(section.title.clone(), Style::default().fg(Color::Blue)),
-                            Span::styled("] ", Style::default().fg(Color::DarkGray)),
-                            Span::styled(
-                                result.line_content.chars().take(60).collect::<String>(),
-                                Style::default().fg(Color::White),
-                            ),
-                        ]))
-                    } else {
-                        ListItem::new(Line::from(vec![
-                            Span::styled(
-                                format!("{:2}. ", i + 1),
-                                Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
-                            ),
-                            Span::styled("Result", Style::default().fg(Color::White)),
-                        ]))
-                    }
-                } else {
-                    ListItem::new(Line::from(vec![
-                        Span::styled(
-                            format!("{:2}. ", i + 1),
-                            Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
-                        ),
-                        Span::styled("Result", Style::default().fg(Color::White)),
-                    ]))
-                }
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!("{}. ", i + 1), Style::default().fg(theme.secondary)),
+                    Span::styled(
+                        display_text.chars().take(60).collect::<String>(),
+                        Style::default().fg(theme.foreground),
+                    ),
+                ]))
             })
             .collect();
 
-        // Create a ListState for the search results
         let mut search_state = ratatui::widgets::ListState::default();
         search_state.select(app.search_selection);
 
@@ -880,123 +824,1052 @@ fn draw_search_popup(f: &mut Frame, app: &App) {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(Line::from(vec![
-                        Span::styled("📋 ", Style::default().fg(Color::Green)),
-                        Span::styled(
-                            "Results ",
-                            Style::default()
-                                .fg(Color::Green)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            format!(
-                                "({}/{})",
-                                app.search_results.len().min(20),
-                                app.search_results.len()
-                            ),
-                            Style::default()
-                                .fg(Color::Green)
-                                .add_modifier(Modifier::DIM),
-                        ),
-                    ]))
-                    .border_style(Style::default().fg(Color::Green)),
+                    .title(format!("Results ({})", app.search_results.len()))
+                    .border_style(Style::default().fg(theme.success)),
             )
-            .style(Style::default())
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(Style::default().fg(theme.warning))
             .highlight_symbol("▶ ");
         f.render_stateful_widget(results_list, chunks[1], &mut search_state);
-    } else if !app.search_query.is_empty() {
-        let no_results = Paragraph::new(Line::from(vec![
-            Span::styled(
-                "😔 No results found\n\n",
-                Style::default()
-                    .fg(Color::Gray)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("Try searching for:\n", Style::default().fg(Color::Gray)),
-            Span::styled("• ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Section names ", Style::default().fg(Color::Blue)),
-            Span::styled("• ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Repository titles ", Style::default().fg(Color::Green)),
-            Span::styled("• ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Descriptions ", Style::default().fg(Color::Yellow)),
-        ]))
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Line::from(vec![
-                    Span::styled("📋 ", Style::default().fg(Color::Red)),
-                    Span::styled(
-                        "Results (0)",
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                    ),
-                ]))
-                .border_style(Style::default().fg(Color::Red)),
-        );
-        f.render_widget(no_results, chunks[1]);
+    }
+}
+
+fn draw_theme_browser_popup(f: &mut Frame, app: &App, theme: &ThemeColors) {
+    let popup_area = centered_rect(85, 70, f.size());
+
+    f.render_widget(Clear, popup_area);
+
+    // Add search bar if in search mode
+    let (title_area, main_area) = if app.theme_browser.search_mode {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Title
+                Constraint::Length(3), // Search bar
+                Constraint::Min(0),    // Main content
+            ])
+            .split(popup_area);
+        (chunks[0], chunks[2])
     } else {
-        let help_text = Paragraph::new(Line::from(vec![
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(popup_area);
+        (chunks[0], chunks[1])
+    };
+
+    // Theme browser title with enhanced styling
+    let title_text = if cfg!(feature = "aur-theme-preview") {
+        "🎨 Hybrid Multi-Panel Theme Preview"
+    } else {
+        "🎨 Theme Browser - Feature Not Available"
+    };
+
+    let preview_info = if cfg!(feature = "aur-theme-preview") {
+        match app.preview_state {
+            crate::models::PreviewState::Loading => " - Loading theme preview...",
+            crate::models::PreviewState::Applied(_) => {
+                " - Multi-panel preview active! ESC to restore"
+            }
+            crate::models::PreviewState::Error => " - Error loading theme",
+            _ => {
+                if app.theme_browser.search_mode {
+                    " - Type to filter themes, j/k navigate, Enter to apply, ESC to clear"
+                } else {
+                    " - Navigate with j/k, Enter for preview, / to search, ESC to close"
+                }
+            }
+        }
+    } else {
+        " - Available only via AUR package on Arch Linux - Press ESC to close"
+    };
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("🎨 ", Style::default().fg(theme.secondary)),
+        Span::styled(
+            title_text,
+            Style::default()
+                .fg(theme.secondary)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(preview_info, Style::default().fg(theme.muted)),
+    ]))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.secondary)),
+    );
+    f.render_widget(title, title_area);
+
+    // Render search bar if in search mode
+    if app.theme_browser.search_mode {
+        let search_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Title
+                Constraint::Length(3), // Search bar
+                Constraint::Min(0),    // Main content
+            ])
+            .split(popup_area);
+
+        let search_text = Line::from(vec![
+            Span::styled("🔍 ", Style::default().fg(theme.warning)),
             Span::styled(
-                "✨ Start typing to search...\n\n",
+                &app.theme_browser.search_query,
+                Style::default().fg(theme.warning),
+            ),
+            Span::styled(
+                "▌",
                 Style::default()
-                    .fg(Color::Gray)
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ),
+        ]);
+
+        let result_count = if app.theme_browser.search_query.trim().is_empty() {
+            String::new()
+        } else {
+            format!(" ({} matches)", app.theme_browser.filtered_themes.len())
+        };
+
+        let search_input = Paragraph::new(search_text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(Line::from(vec![
+                    Span::styled("🔍 ", Style::default().fg(theme.warning)),
+                    Span::styled(
+                        "Filter Themes",
+                        Style::default()
+                            .fg(theme.warning)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(&result_count, Style::default().fg(theme.muted)),
+                ]))
+                .border_style(Style::default().fg(theme.warning)),
+        );
+        f.render_widget(search_input, search_chunks[1]);
+    }
+
+    // Theme content
+    if app.theme_browser.loading {
+        let loading = Paragraph::new("🔄 Loading themes...")
+            .style(Style::default().fg(theme.warning))
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Loading")
+                    .border_style(Style::default().fg(theme.warning)),
+            );
+        f.render_widget(loading, main_area);
+    } else if let Some(ref error) = app.theme_browser.error {
+        let error_text = Paragraph::new(format!("❌ Error: {error}"))
+            .style(Style::default().fg(theme.error))
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Error")
+                    .border_style(Style::default().fg(theme.error)),
+            );
+        f.render_widget(error_text, main_area);
+    } else {
+        // Show theme list or entries based on feature flag
+        #[cfg(feature = "aur-theme-preview")]
+        {
+            draw_aur_theme_content(f, main_area, app, theme);
+        }
+        #[cfg(not(feature = "aur-theme-preview"))]
+        {
+            draw_legacy_theme_content(f, main_area, app, theme);
+        }
+    }
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_aur_theme_content(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
+    if app.theme_entries.is_empty() {
+        let empty_text = Paragraph::new("No themes found in README")
+            .style(Style::default().fg(theme.muted))
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Empty")
+                    .border_style(Style::default().fg(theme.muted)),
+            );
+        f.render_widget(empty_text, area);
+        return;
+    }
+
+    // Split the area into two parts: theme selector and preview
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(25), // Theme list
+            Constraint::Percentage(75), // Multi-panel preview
+        ])
+        .split(area);
+
+    // Draw theme selector on the left
+    draw_theme_selector(f, main_chunks[0], app, theme);
+
+    // Draw multi-panel preview on the right
+    if let Some(current_theme) = get_current_preview_theme(app) {
+        draw_hybrid_multi_panel_preview(f, main_chunks[1], current_theme, theme);
+    } else {
+        // Show instructions when no theme is selected
+        draw_preview_instructions(f, main_chunks[1], theme);
+    }
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_theme_selector(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
+    #[cfg(feature = "aur-theme-preview")]
+    {
+        let (items, selected_index) = if app.theme_browser.search_mode
+            && !app.theme_browser.filtered_themes.is_empty()
+        {
+            // Show filtered results
+            let filtered_items: Vec<ListItem> = app
+                .theme_browser.filtered_themes
+                .iter()
+                .enumerate()
+                .filter_map(|(list_idx, &theme_idx)| {
+                    app.theme_entries.get(theme_idx).map(|theme_entry| {
+                        let is_selected = app.theme_browser.filtered_selected == Some(list_idx);
+                        let is_applied = matches!(app.preview_state,
+                            crate::models::PreviewState::Applied(ref t) if t.as_ref().name == theme_entry.name
+                        );
+
+                        let name_style = if is_selected {
+                            if is_applied {
+                                Style::default()
+                                    .fg(theme.success)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default()
+                                    .fg(theme.foreground)
+                                    .add_modifier(Modifier::BOLD)
+                            }
+                        } else {
+                            Style::default().fg(theme.muted)
+                        };
+
+                        let mut spans = vec![
+                            if is_selected {
+                                Span::styled("▶ ", Style::default().fg(theme.success))
+                            } else {
+                                Span::styled("  ", Style::default())
+                            },
+                            Span::styled(&theme_entry.name, name_style),
+                        ];
+
+                        if is_applied {
+                            spans.push(Span::styled(" ✨", Style::default().fg(theme.success)));
+                        }
+
+                        ListItem::new(Line::from(spans))
+                    })
+                })
+                .collect();
+
+            (filtered_items, app.theme_browser.filtered_selected)
+        } else if app.theme_browser.search_mode
+            && app.theme_browser.filtered_themes.is_empty()
+            && !app.theme_browser.search_query.trim().is_empty()
+        {
+            // Show "no matches" when search has no results
+            let no_matches = vec![ListItem::new(Line::from(vec![
+                Span::styled("  No themes match \"", Style::default().fg(theme.muted)),
+                Span::styled(
+                    &app.theme_browser.search_query,
+                    Style::default().fg(theme.warning),
+                ),
+                Span::styled("\"", Style::default().fg(theme.muted)),
+            ]))];
+            (no_matches, None)
+        } else {
+            // Show all themes
+            let all_items: Vec<ListItem> = app
+                .theme_entries
+                .iter()
+                .enumerate()
+                .map(|(i, theme_entry)| {
+                    let is_selected = app.theme_browser.selected_index == Some(i);
+                    let is_applied = matches!(app.preview_state,
+                        crate::models::PreviewState::Applied(ref t) if t.as_ref().name == theme_entry.name
+                    );
+
+                    let name_style = if is_selected {
+                        if is_applied {
+                            Style::default()
+                                .fg(theme.success)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                                .fg(theme.foreground)
+                                .add_modifier(Modifier::BOLD)
+                        }
+                    } else {
+                        Style::default().fg(theme.muted)
+                    };
+
+                    let mut spans = vec![
+                        if is_selected {
+                            Span::styled("▶ ", Style::default().fg(theme.success))
+                        } else {
+                            Span::styled("  ", Style::default())
+                        },
+                        Span::styled(&theme_entry.name, name_style),
+                    ];
+
+                    if is_applied {
+                        spans.push(Span::styled(" ✨", Style::default().fg(theme.success)));
+                    }
+
+                    ListItem::new(Line::from(spans))
+                })
+                .collect();
+
+            (all_items, app.theme_browser.selected_index)
+        };
+
+        let mut list_state = ratatui::widgets::ListState::default();
+        list_state.select(selected_index);
+
+        let theme_count =
+            if app.theme_browser.search_mode && !app.theme_browser.search_query.trim().is_empty() {
+                format!(
+                    " ({}/{})",
+                    app.theme_browser.filtered_themes.len(),
+                    app.theme_entries.len()
+                )
+            } else {
+                format!(" ({})", app.theme_entries.len())
+            };
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!("🎨 Themes{}", theme_count))
+                    .border_style(Style::default().fg(theme.primary)),
+            )
+            .highlight_style(Style::default())
+            .highlight_symbol("");
+
+        f.render_stateful_widget(list, area, &mut list_state);
+    }
+
+    #[cfg(not(feature = "aur-theme-preview"))]
+    {
+        let empty_text = Paragraph::new("Feature not available in this build")
+            .style(Style::default().fg(theme.muted))
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("🎨 Themes")
+                    .border_style(Style::default().fg(theme.muted)),
+            );
+        f.render_widget(empty_text, area);
+    }
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_preview_instructions(f: &mut Frame, area: Rect, theme: &ThemeColors) {
+    let instructions = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled("🔍 ", Style::default().fg(theme.warning)),
+            Span::styled(
+                "Theme Preview",
+                Style::default()
+                    .fg(theme.foreground)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("🔍 Search features:\n", Style::default().fg(Color::Gray)),
-            Span::styled("• ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Repository names ", Style::default().fg(Color::Green)),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Navigation:",
+            Style::default()
+                .fg(theme.secondary)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![
             Span::styled(
-                "(highest priority)\n",
+                "  j/k",
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(theme.primary)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" - Navigate themes", Style::default().fg(theme.muted)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "  Enter",
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " - Apply theme and show preview",
+                Style::default().fg(theme.muted),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "  ESC",
+                Style::default()
+                    .fg(theme.error)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" - Close and restore", Style::default().fg(theme.muted)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "Select a theme and press ",
+                Style::default().fg(theme.muted),
+            ),
+            Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" to see:", Style::default().fg(theme.muted)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("• ", Style::default().fg(theme.warning)),
+            Span::styled(
+                "Terminal simulation with theme colors",
+                Style::default().fg(theme.muted),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("• ", Style::default().fg(theme.warning)),
+            Span::styled(
+                "Application preview (btop-style)",
+                Style::default().fg(theme.muted),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("• ", Style::default().fg(theme.warning)),
+            Span::styled(
+                "Code editor with syntax highlighting",
+                Style::default().fg(theme.muted),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("• ", Style::default().fg(theme.warning)),
+            Span::styled(
+                "Color palette with hex values",
+                Style::default().fg(theme.muted),
+            ),
+        ]),
+    ])
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("📋 Preview Instructions")
+            .border_style(Style::default().fg(theme.primary)),
+    );
+
+    f.render_widget(instructions, area);
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn get_current_preview_theme(app: &App) -> Option<&crate::models::Theme> {
+    match &app.preview_state {
+        crate::models::PreviewState::Applied(theme) => Some(theme.as_ref()),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_hybrid_multi_panel_preview(
+    f: &mut Frame,
+    area: Rect,
+    theme_colors: &crate::models::Theme,
+    ui_theme: &ThemeColors,
+) {
+    // Create 4-panel layout
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(50), // Top row (Terminal + Application)
+            Constraint::Percentage(50), // Bottom row (Editor + Palette)
+        ])
+        .split(area);
+
+    // Top row: Terminal and Application panels
+    let top_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50), // Terminal panel
+            Constraint::Percentage(50), // Application panel
+        ])
+        .split(main_chunks[0]);
+
+    // Bottom row: Editor and Palette panels
+    let bottom_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50), // Editor panel
+            Constraint::Percentage(50), // Palette panel
+        ])
+        .split(main_chunks[1]);
+
+    // Draw each panel with the applied theme
+    draw_terminal_preview_panel(f, top_chunks[0], theme_colors, ui_theme);
+    draw_application_preview_panel(f, top_chunks[1], theme_colors, ui_theme);
+    draw_editor_preview_panel(f, bottom_chunks[0], theme_colors, ui_theme);
+    draw_palette_preview_panel(f, bottom_chunks[1], theme_colors, ui_theme);
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_terminal_preview_panel(
+    f: &mut Frame,
+    area: Rect,
+    theme: &crate::models::Theme,
+    ui_theme: &ThemeColors,
+) {
+    let bg_color = parse_hex_color(&theme.colors.background).unwrap_or(ui_theme.background);
+    let fg_color = parse_hex_color(&theme.colors.foreground).unwrap_or(ui_theme.foreground);
+    let prompt_color = parse_hex_color(&theme.colors.bright.green).unwrap_or(ui_theme.success);
+    let command_color = parse_hex_color(&theme.colors.normal.yellow).unwrap_or(ui_theme.warning);
+    let file_color = parse_hex_color(&theme.colors.bright.blue).unwrap_or(ui_theme.primary);
+    let dir_color = parse_hex_color(&theme.colors.bright.cyan).unwrap_or(ui_theme.secondary);
+
+    let terminal_content = vec![
+        Line::from(vec![
+            Span::styled(
+                "user@omarchy ",
+                Style::default()
+                    .fg(prompt_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "~/awesome-omarchy ",
+                Style::default().fg(dir_color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("$ ", Style::default().fg(fg_color)),
+            Span::styled("ls -la", Style::default().fg(command_color)),
+        ]),
+        Line::from(vec![Span::styled(
+            "total 42",
+            Style::default().fg(fg_color),
+        )]),
+        Line::from(vec![
+            Span::styled(
+                "drwxr-xr-x 5 user user 4096 Aug 21 14:30 ",
+                Style::default().fg(fg_color),
+            ),
+            Span::styled(
+                ".",
+                Style::default().fg(dir_color).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "drwxr-xr-x 3 user user 4096 Aug 21 14:25 ",
+                Style::default().fg(fg_color),
+            ),
+            Span::styled(
+                "..",
+                Style::default().fg(dir_color).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "-rw-r--r-- 1 user user 1034 Aug 21 14:30 ",
+                Style::default().fg(fg_color),
+            ),
+            Span::styled("Cargo.toml", Style::default().fg(file_color)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "-rw-r--r-- 1 user user 5847 Aug 21 14:28 ",
+                Style::default().fg(fg_color),
+            ),
+            Span::styled("README.md", Style::default().fg(file_color)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "drwxr-xr-x 2 user user 4096 Aug 21 14:25 ",
+                Style::default().fg(fg_color),
+            ),
+            Span::styled(
+                "src/",
+                Style::default().fg(dir_color).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "user@omarchy ",
+                Style::default()
+                    .fg(prompt_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "~/awesome-omarchy ",
+                Style::default().fg(dir_color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("$ ", Style::default().fg(fg_color)),
+            Span::styled("cargo run", Style::default().fg(command_color)),
+        ]),
+        Line::from(vec![Span::styled(
+            "   Compiling awesome-omarchy-tui v0.1.0",
+            Style::default().fg(fg_color),
+        )]),
+        Line::from(vec![
+            Span::styled("    Finished ", Style::default().fg(fg_color)),
+            Span::styled(
+                "dev",
+                Style::default()
+                    .fg(prompt_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" [unoptimized + debuginfo]", Style::default().fg(fg_color)),
+        ]),
+    ];
+
+    let terminal_panel = Paragraph::new(terminal_content)
+        .style(Style::default().bg(bg_color).fg(fg_color))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("🖥️ Terminal")
+                .border_style(Style::default().fg(ui_theme.primary)),
+        );
+
+    f.render_widget(terminal_panel, area);
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_application_preview_panel(
+    f: &mut Frame,
+    area: Rect,
+    theme: &crate::models::Theme,
+    ui_theme: &ThemeColors,
+) {
+    let bg_color = parse_hex_color(&theme.colors.background).unwrap_or(ui_theme.background);
+    let fg_color = parse_hex_color(&theme.colors.foreground).unwrap_or(ui_theme.foreground);
+    let cpu_color = parse_hex_color(&theme.colors.normal.red).unwrap_or(ui_theme.error);
+    let mem_color = parse_hex_color(&theme.colors.normal.blue).unwrap_or(ui_theme.primary);
+    let disk_color = parse_hex_color(&theme.colors.normal.green).unwrap_or(ui_theme.success);
+    let label_color = parse_hex_color(&theme.colors.bright.white).unwrap_or(ui_theme.foreground);
+
+    let application_content = vec![
+        Line::from(vec![Span::styled(
+            "System Monitor",
+            Style::default()
+                .fg(label_color)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "CPU: ",
+                Style::default()
+                    .fg(label_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("████████████████░░░░ ", Style::default().fg(cpu_color)),
+            Span::styled(
+                "67%",
+                Style::default().fg(cpu_color).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![Span::styled(
+            "     Intel i7-12700K @ 3.60GHz",
+            Style::default().fg(fg_color),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "MEM: ",
+                Style::default()
+                    .fg(label_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("████████████░░░░░░░░ ", Style::default().fg(mem_color)),
+            Span::styled(
+                "54%",
+                Style::default().fg(mem_color).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![Span::styled(
+            "     8.7GB / 16.0GB",
+            Style::default().fg(fg_color),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "DSK: ",
+                Style::default()
+                    .fg(label_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("██████░░░░░░░░░░░░░░ ", Style::default().fg(disk_color)),
+            Span::styled(
+                "23%",
+                Style::default().fg(disk_color).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![Span::styled(
+            "     247GB / 1TB SSD",
+            Style::default().fg(fg_color),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "NET: ",
+                Style::default()
+                    .fg(label_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("↓", Style::default().fg(disk_color)),
+            Span::styled("127MB/s ", Style::default().fg(fg_color)),
+            Span::styled("↑", Style::default().fg(cpu_color)),
+            Span::styled("42MB/s", Style::default().fg(fg_color)),
+        ]),
+    ];
+
+    let application_panel = Paragraph::new(application_content)
+        .style(Style::default().bg(bg_color).fg(fg_color))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("📊 System Monitor")
+                .border_style(Style::default().fg(ui_theme.primary)),
+        );
+
+    f.render_widget(application_panel, area);
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_editor_preview_panel(
+    f: &mut Frame,
+    area: Rect,
+    theme: &crate::models::Theme,
+    ui_theme: &ThemeColors,
+) {
+    let bg_color = parse_hex_color(&theme.colors.background).unwrap_or(ui_theme.background);
+    let fg_color = parse_hex_color(&theme.colors.foreground).unwrap_or(ui_theme.foreground);
+    let keyword_color = parse_hex_color(&theme.colors.bright.magenta).unwrap_or(ui_theme.accent);
+    let string_color = parse_hex_color(&theme.colors.normal.green).unwrap_or(ui_theme.success);
+    let comment_color = parse_hex_color(&theme.colors.normal.black).unwrap_or(ui_theme.muted);
+    let function_color = parse_hex_color(&theme.colors.bright.blue).unwrap_or(ui_theme.primary);
+    let number_color = parse_hex_color(&theme.colors.normal.cyan).unwrap_or(ui_theme.secondary);
+
+    let editor_content = vec![
+        Line::from(vec![
+            Span::styled("1 ", Style::default().fg(comment_color)),
+            Span::styled(
+                "use ",
+                Style::default()
+                    .fg(keyword_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("std::collections::HashMap;", Style::default().fg(fg_color)),
+        ]),
+        Line::from(vec![Span::styled("2 ", Style::default().fg(comment_color))]),
+        Line::from(vec![
+            Span::styled("3 ", Style::default().fg(comment_color)),
+            Span::styled(
+                "// Theme preview implementation",
+                Style::default()
+                    .fg(comment_color)
                     .add_modifier(Modifier::ITALIC),
             ),
-            Span::styled("• ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Descriptions ", Style::default().fg(Color::Yellow)),
+        ]),
+        Line::from(vec![
+            Span::styled("4 ", Style::default().fg(comment_color)),
             Span::styled(
-                "(medium priority)\n",
+                "pub fn ",
                 Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
-            ),
-            Span::styled("• ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                "j/k ",
-                Style::default()
-                    .fg(Color::Cyan)
+                    .fg(keyword_color)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("to navigate • ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                "Enter ",
+                "apply_theme",
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(function_color)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("to open URLs", Style::default().fg(Color::DarkGray)),
-        ]))
+            Span::styled("(theme: &", Style::default().fg(fg_color)),
+            Span::styled("Theme", Style::default().fg(keyword_color)),
+            Span::styled(") {", Style::default().fg(fg_color)),
+        ]),
+        Line::from(vec![
+            Span::styled("5 ", Style::default().fg(comment_color)),
+            Span::styled("    ", Style::default()),
+            Span::styled(
+                "let ",
+                Style::default()
+                    .fg(keyword_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("colors = theme.colors;", Style::default().fg(fg_color)),
+        ]),
+        Line::from(vec![
+            Span::styled("6 ", Style::default().fg(comment_color)),
+            Span::styled("    ", Style::default()),
+            Span::styled(
+                "println!",
+                Style::default()
+                    .fg(function_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("(", Style::default().fg(fg_color)),
+            Span::styled("\"Theme: {}\"", Style::default().fg(string_color)),
+            Span::styled(", theme.name);", Style::default().fg(fg_color)),
+        ]),
+        Line::from(vec![
+            Span::styled("7 ", Style::default().fg(comment_color)),
+            Span::styled("}", Style::default().fg(fg_color)),
+        ]),
+        Line::from(vec![Span::styled("8 ", Style::default().fg(comment_color))]),
+        Line::from(vec![
+            Span::styled("9 ", Style::default().fg(comment_color)),
+            Span::styled(
+                "const ",
+                Style::default()
+                    .fg(keyword_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("MAX_THEMES", Style::default().fg(fg_color)),
+            Span::styled(": ", Style::default().fg(fg_color)),
+            Span::styled("usize ", Style::default().fg(keyword_color)),
+            Span::styled("= ", Style::default().fg(fg_color)),
+            Span::styled(
+                "42",
+                Style::default()
+                    .fg(number_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(";", Style::default().fg(fg_color)),
+        ]),
+    ];
+
+    let editor_panel = Paragraph::new(editor_content)
+        .style(Style::default().bg(bg_color).fg(fg_color))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("📝 Code Editor")
+                .border_style(Style::default().fg(ui_theme.primary)),
+        );
+
+    f.render_widget(editor_panel, area);
+}
+
+#[cfg(feature = "aur-theme-preview")]
+fn draw_palette_preview_panel(
+    f: &mut Frame,
+    area: Rect,
+    theme: &crate::models::Theme,
+    ui_theme: &ThemeColors,
+) {
+    let bg_color = parse_hex_color(&theme.colors.background).unwrap_or(ui_theme.background);
+    let fg_color = parse_hex_color(&theme.colors.foreground).unwrap_or(ui_theme.foreground);
+
+    let palette_content = vec![
+        Line::from(vec![Span::styled(
+            "Color Palette",
+            Style::default().fg(fg_color).add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "BG: ",
+                Style::default().fg(fg_color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("██ ", Style::default().bg(bg_color)),
+            Span::styled(
+                &theme.colors.background,
+                Style::default().fg(ui_theme.muted),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "FG: ",
+                Style::default().fg(fg_color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("██ ", Style::default().bg(fg_color)),
+            Span::styled(
+                &theme.colors.foreground,
+                Style::default().fg(ui_theme.muted),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "🔴 ",
+                Style::default()
+                    .fg(parse_hex_color(&theme.colors.normal.red).unwrap_or(Color::Red)),
+            ),
+            Span::styled(
+                &theme.colors.normal.red,
+                Style::default().fg(ui_theme.muted),
+            ),
+            Span::styled(" RED", Style::default().fg(ui_theme.muted)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "🟢 ",
+                Style::default()
+                    .fg(parse_hex_color(&theme.colors.normal.green).unwrap_or(Color::Green)),
+            ),
+            Span::styled(
+                &theme.colors.normal.green,
+                Style::default().fg(ui_theme.muted),
+            ),
+            Span::styled(" GREEN", Style::default().fg(ui_theme.muted)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "🔵 ",
+                Style::default()
+                    .fg(parse_hex_color(&theme.colors.normal.blue).unwrap_or(Color::Blue)),
+            ),
+            Span::styled(
+                &theme.colors.normal.blue,
+                Style::default().fg(ui_theme.muted),
+            ),
+            Span::styled(" BLUE", Style::default().fg(ui_theme.muted)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "🟡 ",
+                Style::default()
+                    .fg(parse_hex_color(&theme.colors.normal.yellow).unwrap_or(Color::Yellow)),
+            ),
+            Span::styled(
+                &theme.colors.normal.yellow,
+                Style::default().fg(ui_theme.muted),
+            ),
+            Span::styled(" YELLOW", Style::default().fg(ui_theme.muted)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "🟣 ",
+                Style::default()
+                    .fg(parse_hex_color(&theme.colors.normal.magenta).unwrap_or(Color::Magenta)),
+            ),
+            Span::styled(
+                &theme.colors.normal.magenta,
+                Style::default().fg(ui_theme.muted),
+            ),
+            Span::styled(" MAGENTA", Style::default().fg(ui_theme.muted)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "🩵 ",
+                Style::default()
+                    .fg(parse_hex_color(&theme.colors.normal.cyan).unwrap_or(Color::Cyan)),
+            ),
+            Span::styled(
+                &theme.colors.normal.cyan,
+                Style::default().fg(ui_theme.muted),
+            ),
+            Span::styled(" CYAN", Style::default().fg(ui_theme.muted)),
+        ]),
+    ];
+
+    let palette_panel = Paragraph::new(palette_content)
+        .style(Style::default().bg(bg_color).fg(fg_color))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("🎨 Color Palette")
+                .border_style(Style::default().fg(ui_theme.primary)),
+        );
+
+    f.render_widget(palette_panel, area);
+}
+
+#[cfg(not(feature = "aur-theme-preview"))]
+fn draw_legacy_theme_content(f: &mut Frame, area: Rect, _app: &App, theme: &ThemeColors) {
+    // Show message that this feature is not available in the standard build
+    let message_text = vec![
+        Line::from(vec![
+            Span::styled("🚫 ", Style::default().fg(theme.warning)),
+            Span::styled(
+                "Theme Preview Not Available",
+                Style::default()
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                "This feature is only available when installed via ",
+                Style::default().fg(theme.muted),
+            ),
+            Span::styled(
+                "AUR package",
+                Style::default()
+                    .fg(theme.secondary)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" on ", Style::default().fg(theme.muted)),
+            Span::styled(
+                "Arch Linux",
+                Style::default()
+                    .fg(theme.primary)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(".", Style::default().fg(theme.muted)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Install with: ", Style::default().fg(theme.muted)),
+            Span::styled(
+                "yay -S awesome-omarchy-tui",
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Press ", Style::default().fg(theme.muted)),
+            Span::styled(
+                "ESC",
+                Style::default()
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" to close this dialog.", Style::default().fg(theme.muted)),
+        ]),
+    ];
+
+    let message = Paragraph::new(message_text)
         .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true })
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .title(Line::from(vec![
-                    Span::styled("💡 ", Style::default().fg(Color::Blue)),
+                    Span::styled("🎨 ", Style::default().fg(theme.secondary)),
                     Span::styled(
-                        "Search Help",
+                        "Theme Browser",
                         Style::default()
-                            .fg(Color::Blue)
+                            .fg(theme.secondary)
                             .add_modifier(Modifier::BOLD),
                     ),
                 ]))
-                .border_style(Style::default().fg(Color::Blue)),
+                .border_style(Style::default().fg(theme.warning)),
         );
-        f.render_widget(help_text, chunks[1]);
-    }
+
+    f.render_widget(message, area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -1017,4 +1890,19 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+// Helper function to parse hex colors to ratatui Color
+#[cfg(feature = "aur-theme-preview")]
+fn parse_hex_color(hex: &str) -> Option<Color> {
+    let hex = hex.strip_prefix('#').unwrap_or(hex);
+    if hex.len() != 6 {
+        return None;
+    }
+
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+
+    Some(Color::Rgb(r, g, b))
 }

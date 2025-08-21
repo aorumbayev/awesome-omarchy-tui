@@ -7,7 +7,7 @@ Terminal UI for browsing [awesome-omarchy](https://github.com/aorumbayev/awesome
 - 🔍 **Full-text search** across repositories and descriptions
 - 🎯 **Interactive navigation** with vim-style keybindings
 - 🚀 **Auto-updates** - always stay on the latest version
-- ⚡ **Lightweight** - ~6MB optimized binary
+- ⚡ **Lightweight** - ~small optimized binary
 - 🌍 **Cross-platform** - Linux, macOS, Windows (x64/ARM64)
 
 ## Install
