@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
 mod app;
+mod boot_screen;
 mod client;
 mod events;
 mod models;
@@ -22,6 +23,7 @@ mod parser;
 mod ui;
 
 use app::App;
+use boot_screen::BootScreen;
 use client::HttpClient;
 use events::EventHandler;
 
@@ -79,6 +81,23 @@ async fn main() -> Result<()> {
 }
 
 async fn run_tui() -> Result<()> {
+    // Get terminal size for boot screen scaling
+    let (width, height) = crossterm::terminal::size()?;
+
+    // Show boot screen animation first
+    let mut boot_screen = BootScreen::new((width, height));
+    let continue_to_app = boot_screen
+        .run(|boot_screen, frame| {
+            boot_screen.draw(frame);
+        })
+        .await?;
+
+    // If user chose to exit during boot screen, return
+    if !continue_to_app {
+        return Ok(());
+    }
+
+    // Now start the main TUI application
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;

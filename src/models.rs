@@ -74,7 +74,6 @@ impl Section {
     }
 }
 
-#[cfg(feature = "aur-theme-preview")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeEntry {
     pub name: String,

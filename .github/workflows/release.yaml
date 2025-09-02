@@ -90,28 +90,9 @@ jobs:
           archive: $bin-standard-$target
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  build-aur:
-    needs: create-release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - uses: taiki-e/upload-rust-binary-action@v1
-        with:
-          bin: ${{ env.BINARY_NAME }}
-          target: x86_64-unknown-linux-gnu
-          include: LICENSE,README.md
-          checksum: sha256
-          archive: $bin-aur-$target
-          no-default-features: true
-          features: aur-theme-preview
-          token: ${{ secrets.GITHUB_TOKEN }}
 
   test-installation:
-    needs: [build-standard, build-aur]
+    needs: [build-standard]
     continue-on-error: true
     strategy:
       matrix:
@@ -158,7 +139,7 @@ jobs:
           }
 
   publish-aur:
-    needs: [build-aur, create-release]
+    needs: [build-standard, create-release]
     if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
     runs-on: ubuntu-latest
     environment: production
@@ -173,21 +154,21 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
           echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
-      - name: Wait for AUR binaries
+      - name: Wait for standard binaries
         run: |
           sleep 60
-          BINARY_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/${{ env.BINARY_NAME }}-aur-x86_64-unknown-linux-gnu.tar.gz"
+          BINARY_URL="https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/${{ env.BINARY_NAME }}-standard-x86_64-unknown-linux-gnu.tar.gz"
           
           for i in {1..5}; do
             if curl -sSf --head "$BINARY_URL" > /dev/null; then
-              echo "AUR binaries available"
+              echo "Standard binaries available"
               break
             else
-              echo "Waiting for AUR binaries... ($i/5)"
+              echo "Waiting for standard binaries... ($i/5)"
               sleep 30
             fi
             if [ $i -eq 5 ]; then
-              echo "AUR binaries not available"
+              echo "Standard binaries not available"
               exit 1
             fi
           done

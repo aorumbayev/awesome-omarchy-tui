@@ -292,7 +292,7 @@ calculate_binary_checksum() {
     
     log_step "Calculating binary checksum ($arch)"
     
-    local binary_url="https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v${VERSION}/${BINARY_NAME}-aur-${arch}-unknown-linux-gnu.tar.gz"
+    local binary_url="https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v${VERSION}/${BINARY_NAME}-standard-${arch}-unknown-linux-gnu.tar.gz"
     
     local checksum
     if ! checksum=$(curl -fsSL "$binary_url" | sha256sum | cut -d' ' -f1); then
@@ -402,7 +402,7 @@ url="$REPOSITORY"
 license=('$LICENSE')
 provides=('$SOURCE_PKGNAME')
 conflicts=('$SOURCE_PKGNAME')
-source_x86_64=("\${pkgname%-bin}-\${pkgver}-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v\${pkgver}/$BINARY_NAME-aur-x86_64-unknown-linux-gnu.tar.gz")
+source_x86_64=("\${pkgname%-bin}-\${pkgver}-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v\${pkgver}/$BINARY_NAME-standard-x86_64-unknown-linux-gnu.tar.gz")
 sha256sums_x86_64=('$x86_64_checksum')
 
 package() {
@@ -498,7 +498,7 @@ pkgbase = $BINARY_PKGNAME
 	license = $LICENSE
 	provides = $SOURCE_PKGNAME
 	conflicts = $SOURCE_PKGNAME
-	source_x86_64 = $BINARY_PKGNAME-$VERSION-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$VERSION/$BINARY_NAME-aur-x86_64-unknown-linux-gnu.tar.gz
+	source_x86_64 = $BINARY_PKGNAME-$VERSION-x86_64.tar.gz::https://github.com/aorumbayev/awesome-omarchy-tui/releases/download/v$VERSION/$BINARY_NAME-standard-x86_64-unknown-linux-gnu.tar.gz
 	sha256sums_x86_64 = $x86_64_checksum
 
 pkgname = $BINARY_PKGNAME

@@ -1,4 +1,3 @@
-#[cfg(feature = "aur-theme-preview")]
 use crate::models::ThemeEntry;
 use crate::{
     HttpClient,
@@ -26,7 +25,6 @@ pub struct App {
     pub theme_browser_mode: bool,
     pub theme_applicator: ThemeApplicator,
     pub preview_state: PreviewState,
-    #[cfg(feature = "aur-theme-preview")]
     pub theme_entries: Vec<ThemeEntry>,
 }
 
@@ -58,7 +56,6 @@ impl App {
             theme_browser_mode: false,
             theme_applicator: ThemeApplicator::default(),
             preview_state: PreviewState::default(),
-            #[cfg(feature = "aur-theme-preview")]
             theme_entries: Vec::new(),
         };
 
@@ -239,7 +236,7 @@ impl App {
                 self.search_results.clear();
             }
             // Theme Browser
-            KeyCode::Char('p' | 'P') => {
+            KeyCode::Char('t' | 'T') => {
                 self.open_theme_browser().await?;
             }
             // Legacy scroll support (for paragraph fallback)
@@ -433,7 +430,6 @@ impl App {
     }
 
     // Theme browser methods
-    #[cfg(feature = "aur-theme-preview")]
     pub async fn open_theme_browser(&mut self) -> Result<()> {
         self.theme_browser_mode = true;
         self.theme_browser.loading = true;
@@ -494,45 +490,6 @@ impl App {
                     self.theme_browser.filtered_selected = None;
                 }
                 Err(e) => {
-                    self.theme_browser.error = Some(format!("Failed to load themes: {}", e));
-                }
-            }
-        } else if self.theme_browser.selected_index.is_none()
-            && !self.theme_browser.themes.is_empty()
-        {
-            self.theme_browser.selected_index = Some(0);
-            // Initialize filtered themes (empty = show all)
-            self.theme_browser.filtered_themes.clear();
-            self.theme_browser.filtered_selected = None;
-        }
-
-        self.theme_browser.loading = false;
-        Ok(())
-    }
-
-    /// Legacy theme browser for non-AUR builds
-    #[cfg(not(feature = "aur-theme-preview"))]
-    pub async fn open_theme_browser(&mut self) -> Result<()> {
-        self.theme_browser_mode = true;
-        self.theme_browser.loading = true;
-        self.theme_browser.error = None;
-
-        // Load themes if not already loaded
-        if self.theme_browser.themes.is_empty() {
-            match self.client.fetch_themes().await {
-                Ok(themes) => {
-                    self.theme_browser.themes = themes;
-                    self.theme_browser.selected_index = if !self.theme_browser.themes.is_empty() {
-                        Some(0)
-                    } else {
-                        None
-                    };
-
-                    // Initialize filtered themes (empty = show all)
-                    self.theme_browser.filtered_themes.clear();
-                    self.theme_browser.filtered_selected = None;
-                }
-                Err(e) => {
                     self.theme_browser.error = Some(format!("Failed to load themes: {e}"));
                 }
             }
@@ -562,7 +519,6 @@ impl App {
         self.theme_applicator.clear_theme();
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     async fn load_and_apply_theme(&mut self, theme_entry: &ThemeEntry) -> Result<()> {
         // Set loading state
         self.preview_state = PreviewState::Loading;
@@ -663,28 +619,13 @@ impl App {
             // Filter themes by name (case-insensitive)
             let query = self.theme_browser.search_query.to_lowercase();
 
-            #[cfg(feature = "aur-theme-preview")]
-            {
-                self.theme_browser.filtered_themes = self
-                    .theme_entries
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, entry)| entry.name.to_lowercase().contains(&query))
-                    .map(|(i, _)| i)
-                    .collect();
-            }
-
-            #[cfg(not(feature = "aur-theme-preview"))]
-            {
-                self.theme_browser.filtered_themes = self
-                    .theme_browser
-                    .themes
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, theme)| theme.name.to_lowercase().contains(&query))
-                    .map(|(i, _)| i)
-                    .collect();
-            }
+            self.theme_browser.filtered_themes = self
+                .theme_entries
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| entry.name.to_lowercase().contains(&query))
+                .map(|(i, _)| i)
+                .collect();
 
             // Set selection to first result if we have any
             self.theme_browser.filtered_selected = if self.theme_browser.filtered_themes.is_empty()
@@ -697,48 +638,22 @@ impl App {
     }
 
     fn theme_browser_navigate_next(&mut self) {
-        #[cfg(feature = "aur-theme-preview")]
-        {
-            if !self.theme_entries.is_empty() {
-                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
-                    Some(idx) if idx + 1 < self.theme_entries.len() => idx + 1,
-                    Some(_) => 0, // Wrap to beginning
-                    None => 0,
-                });
-            }
-        }
-        #[cfg(not(feature = "aur-theme-preview"))]
-        {
-            if !self.theme_browser.themes.is_empty() {
-                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
-                    Some(idx) if idx + 1 < self.theme_browser.themes.len() => idx + 1,
-                    Some(_) => 0, // Wrap to beginning
-                    None => 0,
-                });
-            }
+        if !self.theme_entries.is_empty() {
+            self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
+                Some(idx) if idx + 1 < self.theme_entries.len() => idx + 1,
+                Some(_) => 0, // Wrap to beginning
+                None => 0,
+            });
         }
     }
 
     fn theme_browser_navigate_previous(&mut self) {
-        #[cfg(feature = "aur-theme-preview")]
-        {
-            if !self.theme_entries.is_empty() {
-                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
-                    Some(idx) if idx > 0 => idx - 1,
-                    Some(_) => self.theme_entries.len() - 1, // Wrap to end
-                    None => self.theme_entries.len() - 1,
-                });
-            }
-        }
-        #[cfg(not(feature = "aur-theme-preview"))]
-        {
-            if !self.theme_browser.themes.is_empty() {
-                self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
-                    Some(idx) if idx > 0 => idx - 1,
-                    Some(_) => self.theme_browser.themes.len() - 1, // Wrap to end
-                    None => self.theme_browser.themes.len() - 1,
-                });
-            }
+        if !self.theme_entries.is_empty() {
+            self.theme_browser.selected_index = Some(match self.theme_browser.selected_index {
+                Some(idx) if idx > 0 => idx - 1,
+                Some(_) => self.theme_entries.len() - 1, // Wrap to end
+                None => self.theme_entries.len() - 1,
+            });
         }
     }
 
@@ -782,19 +697,8 @@ impl App {
             };
 
         if let Some(theme_idx) = selected_theme_index {
-            #[cfg(feature = "aur-theme-preview")]
-            {
-                if let Some(theme_entry) = self.theme_entries.get(theme_idx).cloned() {
-                    self.load_and_apply_theme(&theme_entry).await?;
-                }
-            }
-            #[cfg(not(feature = "aur-theme-preview"))]
-            {
-                if let Some(theme) = self.theme_browser.themes.get(theme_idx) {
-                    self.theme_browser.preview_theme = Some(theme.clone());
-                    self.theme_applicator.apply_theme(theme.clone());
-                    self.preview_state = PreviewState::Applied(Box::new(theme.clone()));
-                }
+            if let Some(theme_entry) = self.theme_entries.get(theme_idx).cloned() {
+                self.load_and_apply_theme(&theme_entry).await?;
             }
         }
         Ok(())

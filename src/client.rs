@@ -1,8 +1,6 @@
-#[cfg(feature = "aur-theme-preview")]
 use crate::models::ThemeEntry;
 use crate::models::{ReadmeContent, Theme};
 use crate::parser::ReadmeParser;
-#[cfg(feature = "aur-theme-preview")]
 use crate::parser::ThemeParser;
 use anyhow::Result;
 use reqwest::Client;
@@ -54,7 +52,6 @@ impl HttpClient {
     }
 
     /// Fetch themes from the cached README "Themes" section
-    #[cfg(feature = "aur-theme-preview")]
     pub async fn fetch_themes_from_readme(&self) -> Result<Vec<ThemeEntry>> {
         // Load cached README content
         let readme_content = match self.load_from_cache().await {
@@ -68,7 +65,6 @@ impl HttpClient {
     }
 
     /// Lazy load a specific theme's alacritty.toml from GitHub
-    #[cfg(feature = "aur-theme-preview")]
     pub async fn fetch_theme_colors(&self, theme_entry: &ThemeEntry) -> Result<Theme> {
         // Extract GitHub owner/repo from URL
         let url_parts: Vec<&str> = theme_entry.url.split('/').collect();
@@ -92,10 +88,7 @@ impl HttpClient {
         ];
 
         for path in possible_paths {
-            let raw_url = format!(
-                "https://raw.githubusercontent.com/{}/{}/main/{}",
-                owner, repo, path
-            );
+            let raw_url = format!("https://raw.githubusercontent.com/{owner}/{repo}/main/{path}");
 
             if let Ok(response) = self.client.get(&raw_url).send().await
                 && response.status().is_success()
@@ -132,7 +125,6 @@ impl HttpClient {
         Ok(self.create_fallback_theme(theme_entry))
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_fallback_theme(&self, theme_entry: &ThemeEntry) -> Theme {
         // Create a visually distinct fallback theme
         let theme_colors = match theme_entry.name.to_lowercase().as_str() {
@@ -155,7 +147,6 @@ impl HttpClient {
         }
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_dark_theme_colors(&self) -> crate::models::ThemeColors {
         use crate::models::{ThemeColorPalette, ThemeColors};
         ThemeColors {
@@ -184,7 +175,6 @@ impl HttpClient {
         }
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_light_theme_colors(&self) -> crate::models::ThemeColors {
         use crate::models::{ThemeColorPalette, ThemeColors};
         ThemeColors {
@@ -213,7 +203,6 @@ impl HttpClient {
         }
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_blue_theme_colors(&self) -> crate::models::ThemeColors {
         use crate::models::{ThemeColorPalette, ThemeColors};
         ThemeColors {
@@ -242,7 +231,6 @@ impl HttpClient {
         }
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_green_theme_colors(&self) -> crate::models::ThemeColors {
         use crate::models::{ThemeColorPalette, ThemeColors};
         ThemeColors {
@@ -271,7 +259,6 @@ impl HttpClient {
         }
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_red_theme_colors(&self) -> crate::models::ThemeColors {
         use crate::models::{ThemeColorPalette, ThemeColors};
         ThemeColors {
@@ -300,7 +287,6 @@ impl HttpClient {
         }
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_purple_theme_colors(&self) -> crate::models::ThemeColors {
         use crate::models::{ThemeColorPalette, ThemeColors};
         ThemeColors {
@@ -329,7 +315,6 @@ impl HttpClient {
         }
     }
 
-    #[cfg(feature = "aur-theme-preview")]
     fn create_default_theme_colors(&self) -> crate::models::ThemeColors {
         use crate::models::{ThemeColorPalette, ThemeColors};
         ThemeColors {
@@ -356,41 +341,6 @@ impl HttpClient {
                 white: "#acb0d0".to_string(),
             },
         }
-    }
-
-    /// Fetch themes from the Omarchy repository (legacy method)
-    #[cfg(not(feature = "aur-theme-preview"))]
-    pub async fn fetch_themes(&self) -> Result<Vec<Theme>> {
-        let base_url = "https://api.github.com/repos/basecamp/omarchy/contents/themes";
-
-        // Get list of theme directories
-        let response = self
-            .client
-            .get(base_url)
-            .header("User-Agent", "awesome-omarchy-tui")
-            .send()
-            .await?;
-
-        let items: Vec<serde_json::Value> = response.json().await?;
-        let mut themes = Vec::new();
-
-        for item in items {
-            if let (Some(_name), Some(_url)) = (item["name"].as_str(), item["url"].as_str()) {
-                // Skip non-directory items
-                if item["type"].as_str() != Some("dir") {
-                    continue;
-                }
-
-                // Fetch theme contents
-                // Note: This method is currently unused in the aur-theme-preview feature
-            }
-        }
-
-        // Sort themes alphabetically
-        // Note: themes vector is empty in this code path
-        themes.sort_by(|a: &Theme, b| a.name.cmp(&b.name));
-
-        Ok(themes)
     }
 
     /// Simple markdown parser until module resolution is fixed

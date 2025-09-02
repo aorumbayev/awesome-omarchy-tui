@@ -1,10 +1,8 @@
-#[cfg(feature = "aur-theme-preview")]
 use crate::models::ThemeEntry;
 use crate::models::{
     ReadmeContent, ReadmeMetadata, RepositoryEntry, SearchIndex, SearchLocation, SearchPriority,
     Section,
 };
-#[cfg(feature = "aur-theme-preview")]
 use crate::models::{Theme, ThemeColorPalette, ThemeColors};
 use anyhow::{Result, anyhow};
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
@@ -334,7 +332,6 @@ impl ReadmeParser {
     }
 
     /// Extract theme entries from README content
-    #[cfg(feature = "aur-theme-preview")]
     pub fn extract_themes_from_readme(&self, readme: &ReadmeContent) -> Result<Vec<ThemeEntry>> {
         let mut theme_entries = Vec::new();
 
@@ -451,10 +448,8 @@ impl Default for ReadmeParser {
 }
 
 /// Parser for theme files (alacritty.toml)
-#[cfg(feature = "aur-theme-preview")]
 pub struct ThemeParser;
 
-#[cfg(feature = "aur-theme-preview")]
 impl ThemeParser {
     pub fn new() -> Self {
         Self
@@ -486,7 +481,6 @@ impl ThemeParser {
     }
 
     /// Parse alacritty.yml theme file
-    #[cfg(feature = "aur-theme-preview")]
     pub fn parse_alacritty_yaml(&self, theme_name: &str, yaml_content: &str) -> Result<Theme> {
         use serde_json::Value;
         use serde_yaml;
@@ -504,8 +498,8 @@ impl ThemeParser {
 
         Ok(Theme {
             name: self.format_theme_name(theme_name),
-            description: format!("Theme colors from {}", theme_name),
-            source_url: format!("Custom theme: {}", theme_name),
+            description: format!("Theme colors from {theme_name}"),
+            source_url: format!("Custom theme: {theme_name}"),
             colors,
         })
     }
@@ -661,7 +655,6 @@ impl ThemeParser {
     }
 }
 
-#[cfg(feature = "aur-theme-preview")]
 impl Default for ThemeParser {
     fn default() -> Self {
         Self::new()

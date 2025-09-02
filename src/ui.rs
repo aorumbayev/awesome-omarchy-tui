@@ -11,7 +11,6 @@ use ratatui::{
 };
 
 /// Dynamic color scheme that adapts to applied themes
-#[allow(dead_code)]
 pub struct ThemeColors {
     pub background: Color,
     pub foreground: Color,
@@ -22,20 +21,29 @@ pub struct ThemeColors {
     pub warning: Color,
     pub error: Color,
     pub muted: Color,
+    pub highlight: Color,
+
+    pub border_focused: Color,
+    pub border_normal: Color,
 }
 
 impl ThemeColors {
     pub fn new() -> Self {
         Self {
-            background: Color::Black,
-            foreground: Color::White,
-            primary: Color::Blue,
-            secondary: Color::Cyan,
-            accent: Color::LightBlue,
-            success: Color::Green,
-            warning: Color::Yellow,
-            error: Color::Red,
-            muted: Color::DarkGray,
+            // Use ANSI colors for full terminal theme compatibility
+            background: Color::Indexed(0), // ANSI black - adapts to terminal theme
+            foreground: Color::Indexed(15), // ANSI bright white - adapts to terminal theme
+            primary: Color::Indexed(4),    // ANSI blue - adapts to terminal theme
+            secondary: Color::Indexed(6),  // ANSI cyan - adapts to terminal theme
+            accent: Color::Indexed(12),    // ANSI bright blue - adapts to terminal theme
+            success: Color::Indexed(2),    // ANSI green - adapts to terminal theme
+            warning: Color::Indexed(3),    // ANSI yellow - adapts to terminal theme
+            error: Color::Indexed(1),      // ANSI red - adapts to terminal theme
+            muted: Color::Indexed(8), // ANSI bright black (dark gray) - adapts to terminal theme
+            highlight: Color::Indexed(10), // ANSI bright green - adapts to terminal theme
+
+            border_focused: Color::Indexed(2), // ANSI green for focused borders
+            border_normal: Color::Indexed(8),  // ANSI bright black (muted) for normal borders
         }
     }
 }
@@ -57,7 +65,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Constraint::Min(0),    // Main content area (sidebar + content)
             Constraint::Length(2), // Footer
         ])
-        .split(f.size());
+        .split(f.area());
 
     draw_header(f, main_chunks[0], app, &default_theme_colors);
 
@@ -65,8 +73,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(30), // Left sidebar
-            Constraint::Percentage(70), // Right content area
+            Constraint::Percentage(20), // Left sidebar
+            Constraint::Percentage(80), // Right content area
         ])
         .split(main_chunks[1]);
 
@@ -93,13 +101,25 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(area);
 
-    // Premium main title with enhanced typography
+    // Enhanced main title with premium typography and visual flair
     let title = Paragraph::new(Line::from(vec![
         Span::styled("✨ ", Style::default().fg(theme.warning)),
         Span::styled(
-            "Awesome Omarchy",
+            "┌",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            " Awesome Omarchy ",
             Style::default()
                 .fg(theme.secondary)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "┐",
+            Style::default()
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(" ✨", Style::default().fg(theme.warning)),
@@ -116,9 +136,9 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
     };
 
     let meta = Paragraph::new(Line::from(vec![
-        Span::styled("│ ", Style::default().fg(theme.muted)),
+        Span::styled("│ ", Style::default().fg(theme.accent)),
         Span::styled(title_text, meta_style),
-        Span::styled(" │", Style::default().fg(theme.muted)),
+        Span::styled(" │", Style::default().fg(theme.accent)),
     ]))
     .alignment(Alignment::Center);
     f.render_widget(meta, chunks[1]);
@@ -160,9 +180,9 @@ fn draw_sidebar(f: &mut Frame, area: Rect, app: &mut App, theme: &ThemeColors) {
                         if is_selected {
                             ListItem::new(Line::from(vec![
                                 Span::styled(
-                                    "▶ ",
+                                    "◆ ",
                                     Style::default()
-                                        .fg(theme.success)
+                                        .fg(theme.highlight)
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(
@@ -172,39 +192,56 @@ fn draw_sidebar(f: &mut Frame, area: Rect, app: &mut App, theme: &ThemeColors) {
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(" ", Style::default()),
+                                Span::styled("[", Style::default().fg(theme.accent)),
                                 Span::styled(
-                                    format!("({entry_count})"),
+                                    entry_count.to_string(),
                                     Style::default()
-                                        .fg(theme.secondary)
-                                        .add_modifier(Modifier::DIM),
+                                        .fg(theme.accent)
+                                        .add_modifier(Modifier::BOLD),
                                 ),
+                                Span::styled("]", Style::default().fg(theme.accent)),
                             ]))
                         } else {
                             ListItem::new(Line::from(vec![
-                                Span::styled("  ", Style::default()),
-                                Span::styled(&tab.title, Style::default().fg(theme.muted)),
-                                Span::styled(" ", Style::default()),
+                                Span::styled("◇ ", Style::default().fg(theme.muted)),
                                 Span::styled(
-                                    format!("({entry_count})"),
+                                    &tab.title,
+                                    Style::default()
+                                        .fg(theme.foreground)
+                                        .add_modifier(Modifier::DIM),
+                                ),
+                                Span::styled(" ", Style::default()),
+                                Span::styled("[", Style::default().fg(theme.muted)),
+                                Span::styled(
+                                    entry_count.to_string(),
                                     Style::default().fg(theme.muted),
                                 ),
+                                Span::styled("]", Style::default().fg(theme.muted)),
                             ]))
                         }
                     })
                     .collect();
 
-                // Determine border style based on focus
+                // Enhanced border style based on focus
                 let border_style = if app.focus_area == FocusArea::Sidebar {
-                    Style::default().fg(theme.success) // Focused
+                    Style::default().fg(theme.border_focused) // Focused
                 } else {
-                    Style::default().fg(theme.primary) // Not focused
+                    Style::default().fg(theme.border_normal) // Not focused
                 };
 
                 let sidebar_list = List::new(items)
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
-                            .title("📂 Sections")
+                            .title(Line::from(vec![
+                                Span::styled("📂 ", Style::default().fg(theme.primary)),
+                                Span::styled(
+                                    "Sections",
+                                    Style::default()
+                                        .fg(theme.foreground)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                            ]))
                             .border_style(border_style),
                     )
                     .style(Style::default())
@@ -288,22 +325,14 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App, theme: &The
                     .map(|(idx, entry)| {
                         let is_selected = selected_index == Some(idx);
 
-                        // Create formatted list item
+                        // Create formatted list item with enhanced visual hierarchy
                         let title_line = if is_selected {
                             Line::from(vec![
                                 Span::styled(
-                                    "▎",
-                                    Style::default()
-                                        .fg(theme.secondary)
-                                        .add_modifier(Modifier::BOLD),
-                                ),
-                                Span::styled(
                                     format!("{:2}. ", idx + 1),
-                                    Style::default()
-                                        .fg(theme.secondary)
-                                        .add_modifier(Modifier::DIM),
+                                    Style::default().fg(theme.muted),
                                 ),
-                                Span::styled("● ", Style::default().fg(theme.success)),
+                                Span::styled("◆ ", Style::default().fg(theme.highlight)),
                                 Span::styled(
                                     &entry.title,
                                     Style::default()
@@ -313,43 +342,42 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App, theme: &The
                             ])
                         } else {
                             Line::from(vec![
-                                Span::styled("  ", Style::default()),
                                 Span::styled(
                                     format!("{:2}. ", idx + 1),
-                                    Style::default().fg(theme.muted),
+                                    Style::default().fg(theme.muted).add_modifier(Modifier::DIM),
                                 ),
-                                Span::styled("○ ", Style::default().fg(theme.muted)),
-                                Span::styled(&entry.title, Style::default().fg(theme.foreground)),
+                                Span::styled("◇ ", Style::default().fg(theme.muted)),
+                                Span::styled(
+                                    &entry.title,
+                                    Style::default()
+                                        .fg(theme.foreground)
+                                        .add_modifier(Modifier::DIM),
+                                ),
                             ])
                         };
 
                         let mut lines = vec![title_line];
 
-                        // Add description
+                        // Add enhanced description with markdown-style formatting
                         if !entry.description.is_empty() {
+                            let formatted_desc = format_markdown_text(&entry.description);
                             let desc_line = if is_selected {
                                 Line::from(vec![
-                                    Span::styled(
-                                        "▎",
-                                        Style::default()
-                                            .fg(theme.secondary)
-                                            .add_modifier(Modifier::BOLD),
-                                    ),
                                     Span::styled("    ", Style::default()),
-                                    Span::styled("│ ", Style::default().fg(theme.muted)),
+                                    Span::styled("┃ ", Style::default().fg(theme.accent)),
                                     Span::styled(
-                                        &entry.description,
+                                        formatted_desc,
                                         Style::default()
-                                            .fg(theme.muted)
+                                            .fg(theme.foreground)
                                             .add_modifier(Modifier::ITALIC),
                                     ),
                                 ])
                             } else {
                                 Line::from(vec![
                                     Span::styled("      ", Style::default()),
-                                    Span::styled("│ ", Style::default().fg(theme.muted)),
+                                    Span::styled("┃ ", Style::default().fg(theme.muted)),
                                     Span::styled(
-                                        &entry.description,
+                                        formatted_desc,
                                         Style::default()
                                             .fg(theme.muted)
                                             .add_modifier(Modifier::ITALIC),
@@ -359,54 +387,54 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App, theme: &The
                             lines.push(desc_line);
                         }
 
-                        // Add tags
+                        // Add enhanced tags with visual badges
                         if !entry.tags.is_empty() {
-                            let tags_text = entry.tags.join(" • ");
-                            let tags_line = if is_selected {
-                                Line::from(vec![
-                                    Span::styled(
-                                        "▎",
-                                        Style::default()
-                                            .fg(theme.secondary)
-                                            .add_modifier(Modifier::BOLD),
-                                    ),
+                            let tag_badges: Vec<Span> = entry
+                                .tags
+                                .iter()
+                                .enumerate()
+                                .flat_map(|(i, tag)| {
+                                    let badge_color = get_tag_color(tag, theme);
+                                    let mut spans = vec![
+                                        Span::styled("[", Style::default().fg(badge_color)),
+                                        Span::styled(
+                                            tag,
+                                            Style::default()
+                                                .fg(badge_color)
+                                                .add_modifier(Modifier::BOLD),
+                                        ),
+                                        Span::styled("]", Style::default().fg(badge_color)),
+                                    ];
+                                    if i < entry.tags.len() - 1 {
+                                        spans.push(Span::styled(" ", Style::default()));
+                                    }
+                                    spans
+                                })
+                                .collect();
+
+                            let mut tag_spans = if is_selected {
+                                vec![
                                     Span::styled("    ", Style::default()),
-                                    Span::styled("🏷 ", Style::default().fg(theme.warning)),
-                                    Span::styled(
-                                        tags_text,
-                                        Style::default()
-                                            .fg(theme.warning)
-                                            .add_modifier(Modifier::ITALIC),
-                                    ),
-                                ])
+                                    Span::styled("🏷️ ", Style::default().fg(theme.warning)),
+                                ]
                             } else {
-                                Line::from(vec![
+                                vec![
                                     Span::styled("      ", Style::default()),
-                                    Span::styled("🏷 ", Style::default().fg(theme.muted)),
-                                    Span::styled(
-                                        tags_text,
-                                        Style::default()
-                                            .fg(theme.muted)
-                                            .add_modifier(Modifier::ITALIC),
-                                    ),
-                                ])
+                                    Span::styled("🏷️ ", Style::default().fg(theme.muted)),
+                                ]
                             };
-                            lines.push(tags_line);
+                            tag_spans.extend(tag_badges);
+                            lines.push(Line::from(tag_spans));
                         }
 
-                        // Add URL
+                        // Add enhanced URL with better formatting
+                        let formatted_url = format_github_url(&entry.url);
                         let url_line = if is_selected {
                             Line::from(vec![
-                                Span::styled(
-                                    "▎",
-                                    Style::default()
-                                        .fg(theme.secondary)
-                                        .add_modifier(Modifier::BOLD),
-                                ),
                                 Span::styled("    ", Style::default()),
                                 Span::styled("🔗 ", Style::default().fg(theme.primary)),
                                 Span::styled(
-                                    &entry.url,
+                                    formatted_url,
                                     Style::default()
                                         .fg(theme.primary)
                                         .add_modifier(Modifier::UNDERLINED),
@@ -416,23 +444,34 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App, theme: &The
                             Line::from(vec![
                                 Span::styled("      ", Style::default()),
                                 Span::styled("🔗 ", Style::default().fg(theme.muted)),
-                                Span::styled(&entry.url, Style::default().fg(theme.primary)),
+                                Span::styled(
+                                    formatted_url,
+                                    Style::default()
+                                        .fg(theme.primary)
+                                        .add_modifier(Modifier::DIM),
+                                ),
                             ])
                         };
                         lines.push(url_line);
 
-                        // Add separator for selected items
+                        // Add enhanced separator and metadata for selected items
                         if is_selected {
-                            lines.push(Line::from(vec![Span::styled(
-                                "▎",
-                                Style::default()
-                                    .fg(theme.secondary)
-                                    .add_modifier(Modifier::BOLD),
-                            )]));
+                            // Add repository stats if available (placeholder for future enhancement)
+                            lines.push(Line::from(vec![
+                                Span::styled("    ", Style::default()),
+                                Span::styled("└─", Style::default().fg(theme.accent)),
+                                Span::styled(
+                                    " GitHub Repository ",
+                                    Style::default()
+                                        .fg(theme.accent)
+                                        .add_modifier(Modifier::DIM),
+                                ),
+                                Span::styled("⭐", Style::default().fg(theme.warning)),
+                            ]));
                         }
 
-                        // Add spacing between entries
-                        lines.push(Line::from(""));
+                        // Add enhanced spacing between entries
+                        lines.push(Line::from(Span::styled("", Style::default())));
 
                         ListItem::new(lines)
                     })
@@ -442,18 +481,30 @@ fn draw_repository_content(f: &mut Frame, area: Rect, app: &mut App, theme: &The
                 let mut ratatui_state = ListState::default();
                 ratatui_state.select(selected_index);
 
-                // Determine border style based on focus
+                // Enhanced border style based on focus with better visual feedback
                 let border_style = if app.focus_area == FocusArea::Content {
-                    Style::default().fg(theme.success)
+                    Style::default().fg(theme.border_focused)
                 } else {
-                    Style::default().fg(theme.primary)
+                    Style::default().fg(theme.border_normal)
                 };
 
                 let list = List::new(items)
                     .block(
                         Block::default()
                             .borders(Borders::ALL)
-                            .title(format!("📋 {section_title} ({entry_count} entries)"))
+                            .title(Line::from(vec![
+                                Span::styled("📋 ", Style::default().fg(theme.accent)),
+                                Span::styled(
+                                    &section_title,
+                                    Style::default()
+                                        .fg(theme.foreground)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(
+                                    format!(" ({entry_count} entries)"),
+                                    Style::default().fg(theme.muted).add_modifier(Modifier::DIM),
+                                ),
+                            ]))
                             .border_style(border_style),
                     )
                     .style(Style::default().fg(theme.foreground))
@@ -726,7 +777,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(": Reload │ ", Style::default().fg(theme.muted)),
-            Span::styled("P", theme_key_style),
+            Span::styled("T", theme_key_style),
             Span::styled(
                 if app.is_theme_applied() {
                     ": Themes (applied) │ "
@@ -750,7 +801,7 @@ fn draw_footer(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
 }
 
 fn draw_search_popup(f: &mut Frame, app: &App, theme: &ThemeColors) {
-    let popup_area = centered_rect(80, 60, f.size());
+    let popup_area = centered_rect(80, 60, f.area());
 
     f.render_widget(Clear, popup_area);
 
@@ -834,7 +885,7 @@ fn draw_search_popup(f: &mut Frame, app: &App, theme: &ThemeColors) {
 }
 
 fn draw_theme_browser_popup(f: &mut Frame, app: &App, theme: &ThemeColors) {
-    let popup_area = centered_rect(85, 70, f.size());
+    let popup_area = centered_rect(85, 70, f.area());
 
     f.render_widget(Clear, popup_area);
 
@@ -858,29 +909,19 @@ fn draw_theme_browser_popup(f: &mut Frame, app: &App, theme: &ThemeColors) {
     };
 
     // Theme browser title with enhanced styling
-    let title_text = if cfg!(feature = "aur-theme-preview") {
-        "🎨 Hybrid Multi-Panel Theme Preview"
-    } else {
-        "🎨 Theme Browser - Feature Not Available"
-    };
+    let title_text = "🎨 Hybrid Multi-Panel Theme Preview";
 
-    let preview_info = if cfg!(feature = "aur-theme-preview") {
-        match app.preview_state {
-            crate::models::PreviewState::Loading => " - Loading theme preview...",
-            crate::models::PreviewState::Applied(_) => {
-                " - Multi-panel preview active! ESC to restore"
-            }
-            crate::models::PreviewState::Error => " - Error loading theme",
-            _ => {
-                if app.theme_browser.search_mode {
-                    " - Type to filter themes, j/k navigate, Enter to apply, ESC to clear"
-                } else {
-                    " - Navigate with j/k, Enter for preview, / to search, ESC to close"
-                }
+    let preview_info = match app.preview_state {
+        crate::models::PreviewState::Loading => " - Loading theme preview...",
+        crate::models::PreviewState::Applied(_) => " - Multi-panel preview active! ESC to restore",
+        crate::models::PreviewState::Error => " - Error loading theme",
+        _ => {
+            if app.theme_browser.search_mode {
+                " - Type to filter themes, j/k navigate, Enter to apply, ESC to clear"
+            } else {
+                " - Navigate with j/k, Enter for preview, / to search, ESC to close"
             }
         }
-    } else {
-        " - Available only via AUR package on Arch Linux - Press ESC to close"
     };
 
     let title = Paragraph::new(Line::from(vec![
@@ -974,19 +1015,11 @@ fn draw_theme_browser_popup(f: &mut Frame, app: &App, theme: &ThemeColors) {
             );
         f.render_widget(error_text, main_area);
     } else {
-        // Show theme list or entries based on feature flag
-        #[cfg(feature = "aur-theme-preview")]
-        {
-            draw_aur_theme_content(f, main_area, app, theme);
-        }
-        #[cfg(not(feature = "aur-theme-preview"))]
-        {
-            draw_legacy_theme_content(f, main_area, app, theme);
-        }
+        // Show theme content
+        draw_aur_theme_content(f, main_area, app, theme);
     }
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_aur_theme_content(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
     if app.theme_entries.is_empty() {
         let empty_text = Paragraph::new("No themes found in README")
@@ -1023,15 +1056,12 @@ fn draw_aur_theme_content(f: &mut Frame, area: Rect, app: &App, theme: &ThemeCol
     }
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_theme_selector(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors) {
-    #[cfg(feature = "aur-theme-preview")]
+    let (items, selected_index) = if app.theme_browser.search_mode
+        && !app.theme_browser.filtered_themes.is_empty()
     {
-        let (items, selected_index) = if app.theme_browser.search_mode
-            && !app.theme_browser.filtered_themes.is_empty()
-        {
-            // Show filtered results
-            let filtered_items: Vec<ListItem> = app
+        // Show filtered results
+        let filtered_items: Vec<ListItem> = app
                 .theme_browser.filtered_themes
                 .iter()
                 .enumerate()
@@ -1074,24 +1104,24 @@ fn draw_theme_selector(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors
                 })
                 .collect();
 
-            (filtered_items, app.theme_browser.filtered_selected)
-        } else if app.theme_browser.search_mode
-            && app.theme_browser.filtered_themes.is_empty()
-            && !app.theme_browser.search_query.trim().is_empty()
-        {
-            // Show "no matches" when search has no results
-            let no_matches = vec![ListItem::new(Line::from(vec![
-                Span::styled("  No themes match \"", Style::default().fg(theme.muted)),
-                Span::styled(
-                    &app.theme_browser.search_query,
-                    Style::default().fg(theme.warning),
-                ),
-                Span::styled("\"", Style::default().fg(theme.muted)),
-            ]))];
-            (no_matches, None)
-        } else {
-            // Show all themes
-            let all_items: Vec<ListItem> = app
+        (filtered_items, app.theme_browser.filtered_selected)
+    } else if app.theme_browser.search_mode
+        && app.theme_browser.filtered_themes.is_empty()
+        && !app.theme_browser.search_query.trim().is_empty()
+    {
+        // Show "no matches" when search has no results
+        let no_matches = vec![ListItem::new(Line::from(vec![
+            Span::styled("  No themes match \"", Style::default().fg(theme.muted)),
+            Span::styled(
+                &app.theme_browser.search_query,
+                Style::default().fg(theme.warning),
+            ),
+            Span::styled("\"", Style::default().fg(theme.muted)),
+        ]))];
+        (no_matches, None)
+    } else {
+        // Show all themes
+        let all_items: Vec<ListItem> = app
                 .theme_entries
                 .iter()
                 .enumerate()
@@ -1132,52 +1162,36 @@ fn draw_theme_selector(f: &mut Frame, area: Rect, app: &App, theme: &ThemeColors
                 })
                 .collect();
 
-            (all_items, app.theme_browser.selected_index)
+        (all_items, app.theme_browser.selected_index)
+    };
+
+    let mut list_state = ratatui::widgets::ListState::default();
+    list_state.select(selected_index);
+
+    let theme_count =
+        if app.theme_browser.search_mode && !app.theme_browser.search_query.trim().is_empty() {
+            format!(
+                " ({}/{})",
+                app.theme_browser.filtered_themes.len(),
+                app.theme_entries.len()
+            )
+        } else {
+            format!(" ({})", app.theme_entries.len())
         };
 
-        let mut list_state = ratatui::widgets::ListState::default();
-        list_state.select(selected_index);
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("🎨 Themes{theme_count}"))
+                .border_style(Style::default().fg(theme.primary)),
+        )
+        .highlight_style(Style::default())
+        .highlight_symbol("");
 
-        let theme_count =
-            if app.theme_browser.search_mode && !app.theme_browser.search_query.trim().is_empty() {
-                format!(
-                    " ({}/{})",
-                    app.theme_browser.filtered_themes.len(),
-                    app.theme_entries.len()
-                )
-            } else {
-                format!(" ({})", app.theme_entries.len())
-            };
-
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!("🎨 Themes{}", theme_count))
-                    .border_style(Style::default().fg(theme.primary)),
-            )
-            .highlight_style(Style::default())
-            .highlight_symbol("");
-
-        f.render_stateful_widget(list, area, &mut list_state);
-    }
-
-    #[cfg(not(feature = "aur-theme-preview"))]
-    {
-        let empty_text = Paragraph::new("Feature not available in this build")
-            .style(Style::default().fg(theme.muted))
-            .alignment(Alignment::Center)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("🎨 Themes")
-                    .border_style(Style::default().fg(theme.muted)),
-            );
-        f.render_widget(empty_text, area);
-    }
+    f.render_stateful_widget(list, area, &mut list_state);
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_preview_instructions(f: &mut Frame, area: Rect, theme: &ThemeColors) {
     let instructions = Paragraph::new(vec![
         Line::from(vec![
@@ -1281,7 +1295,6 @@ fn draw_preview_instructions(f: &mut Frame, area: Rect, theme: &ThemeColors) {
     f.render_widget(instructions, area);
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn get_current_preview_theme(app: &App) -> Option<&crate::models::Theme> {
     match &app.preview_state {
         crate::models::PreviewState::Applied(theme) => Some(theme.as_ref()),
@@ -1289,7 +1302,6 @@ fn get_current_preview_theme(app: &App) -> Option<&crate::models::Theme> {
     }
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_hybrid_multi_panel_preview(
     f: &mut Frame,
     area: Rect,
@@ -1330,7 +1342,6 @@ fn draw_hybrid_multi_panel_preview(
     draw_palette_preview_panel(f, bottom_chunks[1], theme_colors, ui_theme);
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_terminal_preview_panel(
     f: &mut Frame,
     area: Rect,
@@ -1450,7 +1461,6 @@ fn draw_terminal_preview_panel(
     f.render_widget(terminal_panel, area);
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_application_preview_panel(
     f: &mut Frame,
     area: Rect,
@@ -1552,7 +1562,6 @@ fn draw_application_preview_panel(
     f.render_widget(application_panel, area);
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_editor_preview_panel(
     f: &mut Frame,
     area: Rect,
@@ -1669,7 +1678,6 @@ fn draw_editor_preview_panel(
     f.render_widget(editor_panel, area);
 }
 
-#[cfg(feature = "aur-theme-preview")]
 fn draw_palette_preview_panel(
     f: &mut Frame,
     area: Rect,
@@ -1712,7 +1720,7 @@ fn draw_palette_preview_panel(
             Span::styled(
                 "🔴 ",
                 Style::default()
-                    .fg(parse_hex_color(&theme.colors.normal.red).unwrap_or(Color::Red)),
+                    .fg(parse_hex_color(&theme.colors.normal.red).unwrap_or(Color::Indexed(1))),
             ),
             Span::styled(
                 &theme.colors.normal.red,
@@ -1724,7 +1732,7 @@ fn draw_palette_preview_panel(
             Span::styled(
                 "🟢 ",
                 Style::default()
-                    .fg(parse_hex_color(&theme.colors.normal.green).unwrap_or(Color::Green)),
+                    .fg(parse_hex_color(&theme.colors.normal.green).unwrap_or(Color::Indexed(2))),
             ),
             Span::styled(
                 &theme.colors.normal.green,
@@ -1736,7 +1744,7 @@ fn draw_palette_preview_panel(
             Span::styled(
                 "🔵 ",
                 Style::default()
-                    .fg(parse_hex_color(&theme.colors.normal.blue).unwrap_or(Color::Blue)),
+                    .fg(parse_hex_color(&theme.colors.normal.blue).unwrap_or(Color::Indexed(4))),
             ),
             Span::styled(
                 &theme.colors.normal.blue,
@@ -1748,7 +1756,7 @@ fn draw_palette_preview_panel(
             Span::styled(
                 "🟡 ",
                 Style::default()
-                    .fg(parse_hex_color(&theme.colors.normal.yellow).unwrap_or(Color::Yellow)),
+                    .fg(parse_hex_color(&theme.colors.normal.yellow).unwrap_or(Color::Indexed(3))),
             ),
             Span::styled(
                 &theme.colors.normal.yellow,
@@ -1760,7 +1768,7 @@ fn draw_palette_preview_panel(
             Span::styled(
                 "🟣 ",
                 Style::default()
-                    .fg(parse_hex_color(&theme.colors.normal.magenta).unwrap_or(Color::Magenta)),
+                    .fg(parse_hex_color(&theme.colors.normal.magenta).unwrap_or(Color::Indexed(5))),
             ),
             Span::styled(
                 &theme.colors.normal.magenta,
@@ -1772,7 +1780,7 @@ fn draw_palette_preview_panel(
             Span::styled(
                 "🩵 ",
                 Style::default()
-                    .fg(parse_hex_color(&theme.colors.normal.cyan).unwrap_or(Color::Cyan)),
+                    .fg(parse_hex_color(&theme.colors.normal.cyan).unwrap_or(Color::Indexed(6))),
             ),
             Span::styled(
                 &theme.colors.normal.cyan,
@@ -1792,84 +1800,6 @@ fn draw_palette_preview_panel(
         );
 
     f.render_widget(palette_panel, area);
-}
-
-#[cfg(not(feature = "aur-theme-preview"))]
-fn draw_legacy_theme_content(f: &mut Frame, area: Rect, _app: &App, theme: &ThemeColors) {
-    // Show message that this feature is not available in the standard build
-    let message_text = vec![
-        Line::from(vec![
-            Span::styled("🚫 ", Style::default().fg(theme.warning)),
-            Span::styled(
-                "Theme Preview Not Available",
-                Style::default()
-                    .fg(theme.warning)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(
-                "This feature is only available when installed via ",
-                Style::default().fg(theme.muted),
-            ),
-            Span::styled(
-                "AUR package",
-                Style::default()
-                    .fg(theme.secondary)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" on ", Style::default().fg(theme.muted)),
-            Span::styled(
-                "Arch Linux",
-                Style::default()
-                    .fg(theme.primary)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(".", Style::default().fg(theme.muted)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Install with: ", Style::default().fg(theme.muted)),
-            Span::styled(
-                "yay -S awesome-omarchy-tui",
-                Style::default()
-                    .fg(theme.success)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Press ", Style::default().fg(theme.muted)),
-            Span::styled(
-                "ESC",
-                Style::default()
-                    .fg(theme.warning)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" to close this dialog.", Style::default().fg(theme.muted)),
-        ]),
-    ];
-
-    let message = Paragraph::new(message_text)
-        .alignment(Alignment::Center)
-        .wrap(Wrap { trim: true })
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Line::from(vec![
-                    Span::styled("🎨 ", Style::default().fg(theme.secondary)),
-                    Span::styled(
-                        "Theme Browser",
-                        Style::default()
-                            .fg(theme.secondary)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ]))
-                .border_style(Style::default().fg(theme.warning)),
-        );
-
-    f.render_widget(message, area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -1893,7 +1823,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 }
 
 // Helper function to parse hex colors to ratatui Color
-#[cfg(feature = "aur-theme-preview")]
 fn parse_hex_color(hex: &str) -> Option<Color> {
     let hex = hex.strip_prefix('#').unwrap_or(hex);
     if hex.len() != 6 {
@@ -1905,4 +1834,47 @@ fn parse_hex_color(hex: &str) -> Option<Color> {
     let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
 
     Some(Color::Rgb(r, g, b))
+}
+
+/// Format markdown text with basic styling hints
+fn format_markdown_text(text: &str) -> String {
+    // Simple markdown formatting - replace **bold** and *italic* markers
+    let text = text.replace("**", "");
+    let text = text.replace("*", "");
+    // Remove excessive whitespace and clean up
+    text.trim().to_string()
+}
+
+/// Get color for different tag types - using ANSI colors for terminal theme compatibility
+fn get_tag_color(tag: &str, theme: &ThemeColors) -> Color {
+    match tag.to_lowercase().as_str() {
+        "rust" => Color::Indexed(11),  // ANSI bright yellow (rust-like)
+        "python" => Color::Indexed(3), // ANSI yellow
+        "javascript" | "typescript" => Color::Indexed(11), // ANSI bright yellow
+        "go" | "golang" => Color::Indexed(6), // ANSI cyan
+        "java" => Color::Indexed(1),   // ANSI red
+        "cpp" | "c++" => Color::Indexed(4), // ANSI blue
+        "tool" | "cli" => theme.primary,
+        "library" => theme.secondary,
+        "framework" => theme.accent,
+        "web" => Color::Indexed(2), // ANSI green
+        "api" => Color::Indexed(5), // ANSI magenta
+        "plugin" | "extension" => theme.warning,
+        _ => theme.muted,
+    }
+}
+
+/// Format GitHub URL to show only repository name
+fn format_github_url(url: &str) -> String {
+    if let Some(repo_part) = url.strip_prefix("https://github.com/") {
+        // Extract just the owner/repo part
+        let parts: Vec<&str> = repo_part.split('/').collect();
+        if parts.len() >= 2 {
+            format!("{}/{}", parts[0], parts[1])
+        } else {
+            repo_part.to_string()
+        }
+    } else {
+        url.to_string()
+    }
 }
