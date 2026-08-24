@@ -447,7 +447,7 @@ async fn verify_file_sha256(file_path: &Path, expected_hash: &str) -> Result<boo
 
     let mut hasher = Sha256::new();
     hasher.update(&file_content);
-    let computed_hash = format!("{:x}", hasher.finalize());
+    let computed_hash = hex::encode(hasher.finalize());
 
     println!("   Expected: {}...", &expected_hash[..16]);
     println!("   Computed: {}...", &computed_hash[..16]);
