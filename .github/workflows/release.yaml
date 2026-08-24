@@ -182,7 +182,7 @@ jobs:
             --force
 
       - name: Publish source package to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
         with:
           pkgname: awesome-omarchy-tui
           pkgbuild: ./aur-packages/PKGBUILD-source
@@ -193,7 +193,7 @@ jobs:
           ssh_keyscan_types: rsa,ecdsa,ed25519
 
       - name: Publish binary package to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
         with:
           pkgname: awesome-omarchy-tui-bin
           pkgbuild: ./aur-packages/PKGBUILD-bin
