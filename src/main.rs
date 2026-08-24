@@ -138,7 +138,7 @@ async fn perform_update(force: bool) -> Result<()> {
         .repo_owner("aorumbayev")
         .repo_name("awesome-omarchy-tui")
         .build()
-        .and_then(|list| list.fetch())
+        .and_then(|list| list.fetch().map(|releases| releases.into_vec()))
     {
         Ok(releases) => releases,
         Err(e) => {
@@ -150,7 +150,7 @@ async fn perform_update(force: bool) -> Result<()> {
     };
 
     if let Some(latest_release) = releases.first() {
-        let latest_version = latest_release.version.trim_start_matches('v');
+        let latest_version = latest_release.version().trim_start_matches('v');
 
         if !force && current_version == latest_version {
             println!("✅ Already on the latest version: {current_version}");
@@ -469,7 +469,7 @@ async fn verify_file_sha256(file_path: &Path, expected_hash: &str) -> Result<boo
 async fn perform_safe_update(
     current_version: &str,
     expected_hash: Option<&str>,
-) -> Result<self_update::Status> {
+) -> Result<self_update::VersionStatus> {
     use anyhow::{Context, anyhow};
 
     // Create the updater with retries and better error messages
@@ -498,13 +498,13 @@ async fn perform_safe_update(
             .repo_owner("aorumbayev")
             .repo_name("awesome-omarchy-tui")
             .build()
-            .and_then(|list| list.fetch())
+            .and_then(|list| list.fetch().map(|releases| releases.into_vec()))
             .context("Failed to fetch release list")?;
 
         let latest_version = releases
             .first()
             .ok_or_else(|| anyhow!("No releases found"))?
-            .version
+            .version()
             .trim_start_matches('v');
 
         let download_url = format!(
